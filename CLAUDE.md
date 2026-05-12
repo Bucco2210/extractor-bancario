@@ -1,144 +1,147 @@
-# CLAUDE.md - Extractor Bancario
+# CLAUDE.md — ETHOS Extractor Bancario
 
-## Descripcion del proyecto
+> Instrucciones operativas para Claude Code en este repositorio. La especificación funcional completa vive en `prompt-claude-code-extractos-bancarios-v4.md` y el plan resumido en `README.md`.
 
-Aplicacion web local para extraer movimientos de extractos bancarios en PDF usando la API de Claude (Anthropic). El usuario sube un PDF, selecciona un banco y un rango de paginas, y la IA devuelve los movimientos estructurados en formato tabla con opcion de exportar a CSV o copiar para Google Sheets.
+## Descripción del proyecto
 
-## Stack tecnologico
+Sistema multiusuario para ETHOS Gestión Contable que **importa, extrae con IA, concilia y exporta** extractos bancarios y de billeteras virtuales (Mercado Pago, Ualá, Naranja X, Cuenta DNI, Personal Pay, etc.). Aplicación full-stack Next.js desplegada en Vercel.
 
-- **Runtime:** Node.js
-- **Backend:** Express.js (server.js)
-- **Frontend:** HTML/CSS/JS vanilla (public/index.html) - SPA sin framework
-- **PDF:** pdf-lib (manipulacion de paginas), pdf-parse (extraccion de texto)
-- **IA:** API de Anthropic (Claude claude-sonnet-4-20250514, 9000 max tokens)
-- **Config:** dotenv para variables de entorno
+## Stack tecnológico
 
-## Estructura del proyecto
+- **Next.js 15+ App Router + TypeScript estricto**
+- **React 19 + TailwindCSS + shadcn/ui + lucide-react**
+- **Zustand** con `persist` para estado del workspace
+- **MongoDB Atlas + Mongoose** (conexión cacheada para serverless)
+- **Vercel Blob** para archivos originales
+- **OpenAI SDK** (`gpt-4o-mini` default, `gpt-4o` fallback) — **no usamos Anthropic en este proyecto**
+- **`pdfjs-dist` legacy + `pdf-lib`**, OCR vía OpenAI vision
+- **`exceljs`** para exportación
+- **Auth.js v5** con adapter Mongo, roles `admin` / `operador`
+- **Inngest** para jobs largos
+- **`zod`, `pino`, `fast-levenshtein`**
+
+## Las tres capas de navegación
+
+No confundirlas — son tres conceptos distintos:
+
+1. **Tabs de categoría de entidad (Home)** — `🏦 Bancos | 📱 Billeteras | 💳 Tarjetas | ⭐ Favoritos`. Filtran el grid de cards.
+2. **Sub-tabs por producto (Panel de Producto)** — al hacer click en una card de banco, se abre slide-over con `Caja Ahorro ARS | Cta Cte ARS | CA USD | Tarjeta`. **Cada sub-tab es un perfil de extracción.**
+3. **Pestañas del workspace** — `/workspace` con pestañas tipo navegador, cada una es un extracto en proceso o ya extraído.
+
+## Estructura objetivo del proyecto
 
 ```
-extractor-bancario/
-├── server.js              # Backend Express - API REST y logica de extraccion
-├── public/
-│   └── index.html         # Frontend completo (HTML + CSS inline + JS inline)
-├── package.json           # Dependencias y scripts
-├── .env                   # ANTHROPIC_API_KEY y PORT (no versionado)
-├── gitignore              # Excluye node_modules, .env, *.pdf
-└── README.md              # Documentacion de uso basica
+app/
+├── (ui)/
+│   ├── page.tsx                     # Home
+│   ├── workspace/...
+│   ├── conciliacion/...
+│   ├── perfiles/...
+│   ├── formatos/...
+│   ├── extracciones/...
+│   └── configuracion/...
+├── api/
+│   ├── home/resumen/route.ts
+│   ├── usuarios/favoritos/route.ts
+│   ├── perfiles/...
+│   ├── extracciones/...
+│   ├── conciliaciones/...
+│   └── auth/[...nextauth]/route.ts
+├── components/
+│   ├── home/
+│   │   ├── DropzoneRapido.tsx
+│   │   ├── TabsCategoriaEntidad.tsx
+│   │   ├── GridBancos.tsx
+│   │   ├── CardBanco.tsx
+│   │   ├── PanelProducto.tsx
+│   │   ├── SubTabsProducto.tsx
+│   │   └── CarruselUltimosExtractos.tsx
+│   ├── workspace/...
+│   └── ui/...                       # shadcn
+├── lib/
+│   ├── env.ts                       # validación zod de env vars
+│   ├── mongo.ts                     # conexión cacheada
+│   ├── openai.ts
+│   ├── auth.ts
+│   ├── blob.ts
+│   ├── pdf.ts
+│   └── ...
+├── models/                          # Mongoose schemas
+│   ├── Usuario.ts
+│   ├── PerfilExtraccion.ts
+│   ├── Extraccion.ts
+│   ├── FormatoAprendido.ts
+│   ├── Conciliacion.ts
+│   └── Auditoria.ts
+└── stores/
+    └── workspace.ts                 # Zustand
 ```
 
-## Arquitectura
+(La estructura se va creando incrementalmente fase a fase, no toda de una.)
 
-### Backend (server.js - ~172 lineas)
+## Modelos de MongoDB (resumen)
 
-Servidor Express con 3 endpoints:
+- `usuarios` — incluye `preferencias.perfilFavorito`, `preferencias.bancosFavoritos`, `preferencias.pestañasAbiertas`.
+- `perfilesExtraccion` — prompts y validaciones por banco/producto.
+- `extracciones` — resultado de cada extracción, con `_meta` (modelo usado, tokens, tiempo).
+- `formatosAprendidos` — reglas determinísticas asociadas a un perfil.
+- `conciliaciones` — matches entre extractos y segunda fuente.
+- `auditoria` — log de acciones sensibles.
 
-| Endpoint | Metodo | Funcion |
-|----------|--------|---------|
-| `/api/bancos` | GET | Lista bancos configurados (`{id, nombre}[]`) |
-| `/api/info-pdf` | POST | Recibe PDF, devuelve `{totalPaginas, bloques[]}` (bloques de 8 paginas) |
-| `/api/extraer` | POST | Recibe PDF + banco + rango de paginas, extrae texto, llama a Claude, devuelve movimientos |
+## Plan de fases
 
-**Middleware:** CORS, express.json, express.static (sirve /public), multer (upload en memoria, 50MB max).
+Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a Vercel.
 
-**Flujo de extraccion (`/api/extraer`):**
-1. Recibe FormData (pdf, banco, desde, hasta)
-2. Carga PDF con pdf-lib y extrae el rango de paginas solicitado
-3. Parsea texto del rango con pdf-parse
-4. Valida que haya texto suficiente (>20 chars, rechaza PDFs escaneados)
-5. Envia texto + prompt del banco a la API de Anthropic
-6. Parsea la respuesta JSON de Claude
-7. Retorna `{banco, cuenta, periodo, titular, movimientos[], _meta}`
+1. **Setup y MVP** — Next.js + Tailwind + shadcn + Mongo + Auth.js + upload Blob + extracción OpenAI mínima + export Excel + deploy.
+2. **Perfiles de extracción** — modelo + 17 seeds + endpoints CRUD + detector con OpenAI.
+3. **Home con tabs de bancos** — `/`, dropzone, tabs categoría, grid, panel producto, favoritos, carrusel últimos.
+4. **Workspace con pestañas** — `/workspace`, Zustand persist, sincronización a Mongo, atajos.
+5. **Aprendizaje** — huella, reglas determinísticas, UI `/formatos`.
+6. **Conciliación** — segunda fuente, matcheo con tolerancias, doble panel.
+7. **Robustez** — OCR vision, Inngest, encriptación, tests ≥ 70%.
+8. **Pulido** — dashboard KPIs, modo oscuro, docs finales.
 
-### Frontend (public/index.html - ~453 lineas)
+## Reglas operativas
 
-SPA con CSS y JS embebido (sin archivos separados). Flujo en 3 pasos:
+1. **Una fase por vez.** Tests al cierre + commit atómico + verificar deploy a Vercel.
+2. **Antes de instalar dependencias, justificar** qué problema resuelve y por qué no se puede sin ella.
+3. **Antes de asumir, preguntar.** Si hay ambigüedad funcional o de UX, frenar y consultar.
+4. **Commits atómicos en español.**
+5. **Documentación viva**: mantener al día `docs/ARQUITECTURA.md`, `docs/DEPLOY_VERCEL.md`, `docs/PERFILES_EXTRACCION.md`, `docs/HOME_UX.md`.
+6. **Deploy a Vercel verificado al cierre de cada fase**, no solo `npm run build` local.
+7. **No mezclar las tres capas de tabs** ni renombrarlas — son conceptos distintos.
 
-1. **Seleccion de banco** - Grid con bancos disponibles (fetch a /api/bancos)
-2. **Subida de PDF** - Drag-and-drop o file input, luego selector de rango de paginas
-3. **Extraccion** - Llama a /api/extraer, acumula movimientos de multiples bloques
+## Convenciones de código
 
-**Exportacion:** Copiar como TSV (clipboard) o descargar CSV.
+- **Idioma**: variables, comentarios y mensajes de UI en **español**. Excepciones: convenciones de framework (`page.tsx`, `route.ts`, `useState`, etc.) y nombres de paquetes npm.
+- **TypeScript estricto.** Nada de `any` salvo justificación. `unknown` + narrowing cuando haga falta.
+- **Validación de límites del sistema con zod**: env vars, payloads de API, datos que llegan de OpenAI.
+- **Locale `es-AR`** para formateo de números y fechas en UI.
+- **Mongoose**: schemas tipados, conexión cacheada en `app/lib/mongo.ts`.
+- **No persistir archivos PDF en disco del server** — todo a Vercel Blob.
+- **Encriptación** con `APP_ENCRYPTION_KEY` para campos sensibles definidos en los modelos.
+- **Logs estructurados con `pino`** (no `console.log` en producción).
+- **Errores HTTP** consistentes: 400 input inválido, 401 sin auth, 403 sin permiso, 404 no encontrado, 422 archivo no procesable, 429 límite excedido, 5xx interno.
 
-**Estado global (variables JS):** `selectedBank`, `uploadedFile`, `totalPaginas`, `selectedDesde`, `selectedHasta`, `movimientosAcumulados`, `bloquesExtraidos`, `metaInfo`.
+## Lo que no se hace
 
-## Configuracion de bancos
+- No usar Anthropic SDK — el motor es OpenAI.
+- No introducir framework de UI alternativo (Mantine, Chakra, Material UI). Solo Tailwind + shadcn.
+- No persistir estado del workspace solo en localStorage cuando `PERSISTIR_PESTAÑAS_EN_MONGO=true`.
+- No crear pantallas o endpoints fuera del scope de la fase en curso.
+- No agregar tests de UI cuando se pueden cubrir las mismas garantías con tests de lógica/handlers.
+- No commits que mezclen fases.
 
-Los bancos se definen en el objeto `BANCOS` de server.js. Cada banco tiene:
-- `nombre`: Nombre para mostrar
-- `prompt`: Prompt especifico para Claude con instrucciones de extraccion
+## Cómo arrancar una fase nueva
 
-**Bancos actuales:**
-- `provincia` - Banco Provincia (cuenta corriente / caja de ahorro)
-- `mercadopago` - Mercado Pago (cuenta, tarjeta, transferencias)
+1. Releer la sección correspondiente del `prompt-claude-code-extractos-bancarios-v4.md` y del `README.md`.
+2. Listar el alcance concreto y los criterios de aceptación.
+3. Confirmar con el usuario antes de instalar dependencias o tomar decisiones de arquitectura no triviales.
+4. Implementar.
+5. Tests + lint + build local + deploy Vercel.
+6. Actualizar la documentación viva relevante.
+7. Commit atómico.
 
-**Para agregar un banco:** Agregar entrada al objeto `BANCOS` en server.js con nombre y prompt. El frontend lo detecta automaticamente via /api/bancos.
+## Estado actual
 
-## Modelo de datos
-
-```json
-{
-  "cuenta": "string | null",
-  "periodo": "string | null",
-  "titular": "string | null",
-  "movimientos": [
-    {
-      "fecha": "DD/MM/YYYY",
-      "descripcion": "string",
-      "referencia": "string | null",
-      "debito": "number | null",
-      "credito": "number | null",
-      "saldo": "number"
-    }
-  ]
-}
-```
-
-Regla: en cada movimiento, `debito` o `credito` tiene valor y el otro es `null`.
-
-## Comandos
-
-```bash
-npm install     # Instalar dependencias
-npm start       # Iniciar servidor (node server.js)
-npm run dev     # Iniciar con --watch (hot reload)
-```
-
-El servidor corre en `http://localhost:3000` (configurable via PORT en .env).
-
-## Codigos de error HTTP
-
-| Codigo | Significado |
-|--------|-------------|
-| 400 | Falta archivo PDF o banco no reconocido |
-| 422 | PDF sin texto extraible (escaneado) o texto insuficiente |
-| 500 | Error interno o API key no configurada |
-| 502 | Error de la API de Anthropic o respuesta no parseable |
-
-## Convenciones de codigo
-
-- Lenguaje del codigo: variables y comentarios en espanol
-- Locale: es-AR para formateo de numeros
-- Sin framework frontend - todo vanilla JS
-- Sin base de datos - sin persistencia, todo en memoria
-- Archivos PDF nunca se guardan en disco (multer memoryStorage)
-- La API key se valida en cada request de extraccion
-
-## Limitaciones conocidas
-
-- Solo PDFs digitales (texto seleccionable), no escaneados/OCR
-- Bloques de 8 paginas recomendados para mejor precision de la IA
-- Depende de que Claude devuelva JSON valido (puede fallar esporadicamente)
-- Sin autenticacion de usuarios - pensado para uso local
-- Sin tests automatizados
-- Sin linting configurado
-
-## Dependencias (6 paquetes)
-
-| Paquete | Version | Uso |
-|---------|---------|-----|
-| express | 4.22.1 | Servidor web |
-| cors | 2.8.6 | CORS |
-| multer | 1.4.5-lts.2 | Upload de archivos |
-| pdf-lib | 1.17.1 | Manipulacion de PDFs |
-| pdf-parse | 1.1.4 | Extraccion de texto |
-| dotenv | 16.6.1 | Variables de entorno |
+Repositorio en transición desde una implementación previa (Express + HTML vanilla + Anthropic). El código legacy se elimina al iniciar Fase 1 con `create-next-app`. La especificación completa vive en `prompt-claude-code-extractos-bancarios-v4.md`.
