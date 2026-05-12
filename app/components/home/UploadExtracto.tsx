@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, FileText, Download } from "lucide-react";
+import { Loader2, Upload, FileText, Download, AlertTriangle } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +16,15 @@ type Movimiento = {
   saldo: number | null;
 };
 
+type ChunkFallido = {
+  indice: number;
+  paginas: number[];
+  error: string;
+};
+
 type ResultadoExtraccion = {
   id: string;
+  estado: "extraido" | "parcial";
   cuenta: string | null;
   periodo: string | null;
   titular: string | null;
@@ -27,6 +34,9 @@ type ResultadoExtraccion = {
     tokensInput: number;
     tokensOutput: number;
     tiempoMs: number;
+    chunksTotal: number;
+    chunksOk: number;
+    chunksFallidos: ChunkFallido[];
   };
 };
 
@@ -76,7 +86,13 @@ export function UploadExtracto() {
       }
       const ok = json as ResultadoExtraccion;
       setResultado(ok);
-      toast.success(`Se extrajeron ${ok.movimientos.length} movimientos.`);
+      if (ok.estado === "parcial") {
+        toast.warning(
+          `Extracción parcial: ${ok.movimientos.length} movimientos, ${ok._meta.chunksFallidos.length} de ${ok._meta.chunksTotal} bloques fallaron.`,
+        );
+      } else {
+        toast.success(`Se extrajeron ${ok.movimientos.length} movimientos.`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error desconocido.";
       toast.error(msg);
@@ -164,6 +180,27 @@ export function UploadExtracto() {
 function ResultadoTabla({ data }: { data: ResultadoExtraccion }) {
   return (
     <div className="flex flex-col gap-4 border-t pt-6">
+      {data.estado === "parcial" ? (
+        <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">Extracción parcial.</p>
+            <p>
+              {data._meta.chunksFallidos.length} de {data._meta.chunksTotal}{" "}
+              bloques no se pudieron procesar. Se exportan los movimientos
+              de los bloques que sí se completaron.
+            </p>
+            <ul className="ml-4 list-disc text-xs">
+              {data._meta.chunksFallidos.map((c) => (
+                <li key={c.indice}>
+                  Bloque {c.indice + 1} (páginas {c.paginas.join(", ")}):{" "}
+                  {c.error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="grid gap-1 text-sm">
           {data.cuenta ? (
@@ -185,9 +222,10 @@ function ResultadoTabla({ data }: { data: ResultadoExtraccion }) {
             </div>
           ) : null}
           <div className="text-xs text-muted-foreground">
-            Modelo {data._meta.modelo} · {data._meta.tokensInput +
-              data._meta.tokensOutput}{" "}
-            tokens · {data._meta.tiempoMs} ms
+            Modelo {data._meta.modelo} · {data._meta.chunksOk}/
+            {data._meta.chunksTotal} bloques ·{" "}
+            {data._meta.tokensInput + data._meta.tokensOutput} tokens ·{" "}
+            {data._meta.tiempoMs} ms
           </div>
         </div>
         <a

@@ -77,10 +77,10 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 |---|---|---|
 | `usuarioId` | ObjectId | índice |
 | `banco`, `cuenta`, `periodo`, `titular` | string \| null | |
-| `estado` | `"pendiente" \| "extraido" \| "error"` | |
+| `estado` | `"pendiente" \| "extraido" \| "parcial" \| "error"` | `parcial` si algún chunk falló |
 | `movimientos[]` | `{fecha, descripcion, referencia, debito, credito, saldo}` | |
 | `archivo` | `{nombre, tamano, contentType, blobKey, blobUrl}` | |
-| `_meta` | `{modelo, tokensInput, tokensOutput, tiempoMs}` | |
+| `_meta` | `{modelo, tokensInput, tokensOutput, tiempoMs, chunksTotal, chunksOk, chunksFallidos[]}` | |
 
 ### `perfilesExtraccion` (stub Fase 1)
 
@@ -99,15 +99,32 @@ POST /api/extracciones
   │
   │ 2. Valida auth, MIME, tamaño
   │ 3. Lee el File a Buffer (memoria)
-  │ 4. extraerTextoPdf(buffer)        ← pdfjs legacy
-  │ 5. tieneTextoSuficiente?          ← rechaza escaneados (NO_PROCESABLE)
-  │ 6. blob.subir()                   ← memoria por ahora
-  │ 7. extraerMovimientos(texto)      ← OpenAI chat.completions JSON
-  │ 8. Extraccion.create({...})       ← Mongo
+  │ 4. extraerTextoPdf(buffer)             ← pdfjs legacy
+  │ 5. tieneTextoSuficiente?               ← rechaza escaneados (NO_PROCESABLE)
+  │ 6. blob.subir()                        ← memoria por ahora
+  │ 7. extraerMovimientosDeChunks({...})   ← chunking server-side
+  │     │
+  │     ├─ partirEnChunks(paginas, N=6)         ← env EXTRACCION_PAGINAS_POR_CHUNK
+  │     ├─ ejecutarConPool(chunks, C=3, …)     ← env EXTRACCION_CHUNKS_PARALELO
+  │     │    para cada chunk: OpenAI JSON → MovimientoExtraido[]
+  │     ├─ agrega resultados respetando orden
+  │     └─ devuelve { resultado, meta+chunksOk+chunksFallidos[] }
+  │ 8. Decide estado: "extraido" | "parcial" | (lanza si nada extrajo)
+  │ 9. Extraccion.create({...})            ← Mongo
   │
   ▼
-{id, cuenta, periodo, titular, movimientos[], _meta}
+{id, estado, cuenta, periodo, titular, movimientos[], _meta}
 ```
+
+### Chunking de extractos largos
+
+Provincia, Galicia y otros bancos pueden tener 60+ páginas. Para evitar
+timeouts y respuestas truncadas del modelo, el server divide el documento
+en bloques (default: 6 páginas) y los procesa en paralelo (default: 3 a
+la vez). Si un bloque falla, los demás siguen y el documento queda con
+`estado: "parcial"` + lista de bloques fallidos en `_meta.chunksFallidos`.
+
+Ajustable por env: `EXTRACCION_PAGINAS_POR_CHUNK`, `EXTRACCION_CHUNKS_PARALELO`.
 
 Errores HTTP:
 - 400 `INPUT_INVALIDO` (archivo faltante, MIME, tamaño)

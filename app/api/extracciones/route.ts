@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { conectarMongoose } from "@/lib/mongo";
 import { extraerTextoPdf, tieneTextoSuficiente } from "@/lib/pdf";
-import { extraerMovimientos } from "@/lib/openai";
+import { extraerMovimientosDeChunks } from "@/lib/openai";
 import { getBlobStorage } from "@/lib/blob";
 import { Extraccion } from "@/models/Extraccion";
 import { AppError, respuestaError } from "@/lib/errors";
@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const formSchema = z.object({
   banco: z.string().trim().optional(),
@@ -50,7 +51,12 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
+    const t0 = Date.now();
     const buffer = Buffer.from(await archivo.arrayBuffer());
+    logger.info(
+      { archivo: archivo.name, tamanoKB: Math.round(archivo.size / 1024) },
+      "[1/5] archivo recibido",
+    );
 
     if (archivo.type !== "application/pdf") {
       throw new AppError(
@@ -59,7 +65,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
+    const tPdf = Date.now();
     const textoPdf = await extraerTextoPdf(buffer);
+    logger.info(
+      {
+        paginas: textoPdf.totalPaginas,
+        chars: textoPdf.textoCompleto.length,
+        ms: Date.now() - tPdf,
+      },
+      "[2/5] PDF parseado",
+    );
     if (!tieneTextoSuficiente(textoPdf)) {
       throw new AppError(
         "NO_PROCESABLE",
@@ -67,25 +82,87 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
+    const tBlob = Date.now();
     const blob = await getBlobStorage().subir({
       nombre: archivo.name,
       contentType: archivo.type,
       data: buffer,
     });
+    logger.info({ ms: Date.now() - tBlob }, "[3/5] blob guardado");
 
-    const { resultado, meta: metaExtraccion } = await extraerMovimientos({
-      textoExtracto: textoPdf.textoCompleto,
+    const tIA = Date.now();
+    logger.info(
+      {
+        modelo: env.OPENAI_MODEL_DEFAULT,
+        paginas: textoPdf.totalPaginas,
+        paginasPorChunk: env.EXTRACCION_PAGINAS_POR_CHUNK,
+        concurrencia: env.EXTRACCION_CHUNKS_PARALELO,
+      },
+      "[4/5] llamando OpenAI por chunks…",
+    );
+
+    const { resultado, meta: metaExtraccion } = await extraerMovimientosDeChunks({
+      paginas: textoPdf.paginas,
       banco: meta.data.banco,
+      onChunkProgreso: (info) => {
+        if (info.ok) {
+          logger.info(
+            {
+              chunk: `${info.indice + 1}/${info.total}`,
+              paginas: info.paginas,
+              ms: info.ms,
+              movimientos: info.movimientos ?? 0,
+            },
+            "chunk ok",
+          );
+        } else {
+          logger.warn(
+            {
+              chunk: `${info.indice + 1}/${info.total}`,
+              paginas: info.paginas,
+              ms: info.ms,
+              error: info.error,
+            },
+            "chunk falló",
+          );
+        }
+      },
     });
 
+    logger.info(
+      {
+        ms: Date.now() - tIA,
+        chunksOk: metaExtraccion.chunksOk,
+        chunksTotal: metaExtraccion.chunksTotal,
+        chunksFallidos: metaExtraccion.chunksFallidos.length,
+        movimientos: resultado.movimientos.length,
+        tokens: metaExtraccion.tokensInput + metaExtraccion.tokensOutput,
+      },
+      "[4/5] OpenAI terminó",
+    );
+
+    if (metaExtraccion.chunksTotal === 0 || metaExtraccion.chunksOk === 0) {
+      throw new AppError(
+        "NO_PROCESABLE",
+        metaExtraccion.chunksFallidos[0]?.error ??
+          "No se pudo extraer ningún chunk del documento.",
+        { chunksFallidos: metaExtraccion.chunksFallidos },
+      );
+    }
+
+    const estado: "extraido" | "parcial" =
+      metaExtraccion.chunksFallidos.length === 0 ? "extraido" : "parcial";
+
+    const tDb = Date.now();
     await conectarMongoose();
+    logger.info({ ms: Date.now() - tDb }, "[5/5] mongo conectado");
     const doc = await Extraccion.create({
       usuarioId: session.user.id,
       banco: meta.data.banco ?? null,
       cuenta: resultado.cuenta,
       periodo: resultado.periodo,
       titular: resultado.titular,
-      estado: "extraido",
+      estado,
       movimientos: resultado.movimientos,
       archivo: {
         nombre: archivo.name,
@@ -100,9 +177,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     logger.info(
       {
         extraccionId: String(doc._id),
+        estado,
         movimientos: resultado.movimientos.length,
         tokens: metaExtraccion.tokensInput + metaExtraccion.tokensOutput,
-        tiempoMs: metaExtraccion.tiempoMs,
+        totalMs: Date.now() - t0,
       },
       "Extracción completada",
     );
@@ -110,6 +188,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json(
       {
         id: String(doc._id),
+        estado,
         cuenta: resultado.cuenta,
         periodo: resultado.periodo,
         titular: resultado.titular,

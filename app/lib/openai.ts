@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { getEnv } from "./env";
+import type { PaginaTexto } from "./pdf";
 
 let cached: OpenAI | null = null;
 
@@ -42,9 +43,24 @@ export type MetaExtraccion = {
   tiempoMs: number;
 };
 
+export type ChunkFallido = {
+  indice: number;
+  paginas: number[];
+  error: string;
+};
+
+export type ResultadoChunkeado = {
+  resultado: ResultadoExtraccion;
+  meta: MetaExtraccion & {
+    chunksTotal: number;
+    chunksOk: number;
+    chunksFallidos: ChunkFallido[];
+  };
+};
+
 const SYSTEM_PROMPT = `Sos un extractor de movimientos de extractos bancarios y de billeteras virtuales argentinas.
 
-Recibís el texto plano de un extracto. Devolvés EXCLUSIVAMENTE un JSON válido con la forma:
+Recibís el texto plano de un extracto (o un fragmento). Devolvés EXCLUSIVAMENTE un JSON válido con la forma:
 
 {
   "cuenta": string | null,
@@ -68,9 +84,10 @@ Reglas:
 - Fechas siempre en DD/MM/YYYY.
 - No inventes datos: si un campo no aparece en el texto, dejalo como null.
 - Ignorá totales, subtotales, leyendas legales y publicidad.
+- Si el texto es un fragmento intermedio sin encabezado, igual extraé los movimientos y dejá cuenta/periodo/titular en null.
 - Si no podés extraer ningún movimiento, devolvé movimientos: [].`;
 
-export async function extraerMovimientos(params: {
+async function extraerChunk(params: {
   textoExtracto: string;
   banco?: string;
   modelo?: string;
@@ -107,6 +124,168 @@ export async function extraerMovimientos(params: {
       tiempoMs,
     },
   };
+}
+
+/**
+ * Versión legacy single-shot: extrae todo en una sola llamada.
+ * Se mantiene para casos chicos o tests. El path productivo es
+ * `extraerMovimientosDeChunks`.
+ */
+export async function extraerMovimientos(params: {
+  textoExtracto: string;
+  banco?: string;
+  modelo?: string;
+}): Promise<{ resultado: ResultadoExtraccion; meta: MetaExtraccion }> {
+  return extraerChunk(params);
+}
+
+/**
+ * Parte las páginas en bloques, las procesa con concurrencia limitada
+ * y agrega los resultados. Si algún chunk falla, los demás siguen y
+ * el chunk fallido queda registrado en `meta.chunksFallidos`.
+ */
+export async function extraerMovimientosDeChunks(params: {
+  paginas: PaginaTexto[];
+  banco?: string;
+  modelo?: string;
+  onChunkProgreso?: (info: {
+    indice: number;
+    total: number;
+    ok: boolean;
+    paginas: number[];
+    ms: number;
+    movimientos?: number;
+    error?: string;
+  }) => void;
+}): Promise<ResultadoChunkeado> {
+  const env = getEnv();
+  const modelo = params.modelo ?? env.OPENAI_MODEL_DEFAULT;
+  const tamanoChunk = env.EXTRACCION_PAGINAS_POR_CHUNK;
+  const concurrencia = env.EXTRACCION_CHUNKS_PARALELO;
+
+  const chunks = partirEnChunks(params.paginas, tamanoChunk);
+  if (chunks.length === 0) {
+    return {
+      resultado: { cuenta: null, periodo: null, titular: null, movimientos: [] },
+      meta: {
+        modelo,
+        tokensInput: 0,
+        tokensOutput: 0,
+        tiempoMs: 0,
+        chunksTotal: 0,
+        chunksOk: 0,
+        chunksFallidos: [],
+      },
+    };
+  }
+
+  const inicioTotal = Date.now();
+  const exitosos: Array<{ indice: number; resultado: ResultadoExtraccion; meta: MetaExtraccion }> = [];
+  const fallidos: ChunkFallido[] = [];
+
+  await ejecutarConPool(chunks, concurrencia, async (chunk, indice) => {
+    const t0 = Date.now();
+    const paginasIds = chunk.map((p) => p.numero);
+    try {
+      const textoChunk = chunk.map((p) => p.texto).join("\n\n");
+      const r = await extraerChunk({
+        textoExtracto: textoChunk,
+        banco: params.banco,
+        modelo,
+      });
+      exitosos.push({ indice, resultado: r.resultado, meta: r.meta });
+      params.onChunkProgreso?.({
+        indice,
+        total: chunks.length,
+        ok: true,
+        paginas: paginasIds,
+        ms: Date.now() - t0,
+        movimientos: r.resultado.movimientos.length,
+      });
+    } catch (err) {
+      const mensaje = err instanceof Error ? err.message : "Error desconocido";
+      fallidos.push({ indice, paginas: paginasIds, error: mensaje });
+      params.onChunkProgreso?.({
+        indice,
+        total: chunks.length,
+        ok: false,
+        paginas: paginasIds,
+        ms: Date.now() - t0,
+        error: mensaje,
+      });
+    }
+  });
+
+  exitosos.sort((a, b) => a.indice - b.indice);
+  fallidos.sort((a, b) => a.indice - b.indice);
+
+  const resultado: ResultadoExtraccion = {
+    cuenta: primeraConValor(exitosos, (r) => r.resultado.cuenta),
+    periodo: primeraConValor(exitosos, (r) => r.resultado.periodo),
+    titular: primeraConValor(exitosos, (r) => r.resultado.titular),
+    movimientos: exitosos.flatMap((r) => r.resultado.movimientos),
+  };
+
+  const tokensInput = exitosos.reduce((s, r) => s + r.meta.tokensInput, 0);
+  const tokensOutput = exitosos.reduce((s, r) => s + r.meta.tokensOutput, 0);
+
+  return {
+    resultado,
+    meta: {
+      modelo,
+      tokensInput,
+      tokensOutput,
+      tiempoMs: Date.now() - inicioTotal,
+      chunksTotal: chunks.length,
+      chunksOk: exitosos.length,
+      chunksFallidos: fallidos,
+    },
+  };
+}
+
+export function partirEnChunks(
+  paginas: PaginaTexto[],
+  tamanoChunk: number,
+): PaginaTexto[][] {
+  if (tamanoChunk <= 0) throw new Error("tamanoChunk debe ser positivo");
+  const chunks: PaginaTexto[][] = [];
+  for (let i = 0; i < paginas.length; i += tamanoChunk) {
+    chunks.push(paginas.slice(i, i + tamanoChunk));
+  }
+  return chunks;
+}
+
+export async function ejecutarConPool<T>(
+  items: T[],
+  concurrencia: number,
+  fn: (item: T, indice: number) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, concurrencia), items.length) },
+    async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        const item = items[i];
+        if (item === undefined) return;
+        await fn(item, i);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+
+function primeraConValor<T>(
+  arr: T[],
+  getter: (item: T) => string | null,
+): string | null {
+  for (const item of arr) {
+    const v = getter(item);
+    if (v) return v;
+  }
+  return null;
 }
 
 export function parsearRespuestaOpenAI(raw: string): ResultadoExtraccion {

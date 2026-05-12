@@ -60,6 +60,10 @@ const envSchema = z.object({
     "galicia,nacion,provincia,santander,bbva,macro,icbc,mercado_pago",
   ),
 
+  // Extracción por chunks
+  EXTRACCION_PAGINAS_POR_CHUNK: z.coerce.number().int().positive().default(6),
+  EXTRACCION_CHUNKS_PARALELO: z.coerce.number().int().positive().default(3),
+
   // Conciliación
   CONCILIACION_TOLERANCIA_DIAS: z.coerce.number().int().nonnegative().default(2),
   CONCILIACION_TOLERANCIA_IMPORTE_PESOS: z.coerce

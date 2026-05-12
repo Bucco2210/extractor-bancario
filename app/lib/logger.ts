@@ -3,21 +3,14 @@ import { getEnv } from "./env";
 
 const env = getEnv();
 
-const isProd = env.APP_ENV === "production";
-
-export const logger = pino({
-  level: env.LOG_LEVEL,
-  base: { app: "ethos-extractor", env: env.APP_ENV },
-  ...(isProd
-    ? {}
-    : {
-        transport: {
-          target: "pino-pretty",
-          options: {
-            colorize: true,
-            translateTime: "HH:MM:ss.l",
-            ignore: "pid,hostname,app,env",
-          },
-        },
-      }),
-});
+// Salida sincrónica a stdout. Evitamos transports con worker_threads porque
+// en el dev server de Next con Turbopack los logs quedan buffereados y no
+// se flushean cuando una request se cuelga mucho (ej: timeout de OpenAI).
+export const logger = pino(
+  {
+    level: env.LOG_LEVEL,
+    base: { app: "ethos-extractor", env: env.APP_ENV },
+    timestamp: pino.stdTimeFunctions.isoTime,
+  },
+  pino.destination({ sync: true }),
+);
