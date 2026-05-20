@@ -144,11 +144,12 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 
 ## Estado actual
 
-**Fases 1, 2 y 3 cerradas. Próxima: Fase 4 (workspace con pestañas).**
+**Fases 1, 2, 3 y 4 cerradas. Próxima: Fase 5 (aprendizaje de formato).**
 
 - **Fase 1 — MVP local**: Next.js 16 + Mongo + Auth.js + OpenAI. Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación. Endpoints: `POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`, `GET /api/extracciones/:id/excel`.
 - **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar`.
-- **Fase 3 — Home**: ruta `/` completa con DropzoneRapido + tabs (banco/billetera/tarjeta/favoritos) + grid de cards + slide-over PanelProducto + carrusel últimos. Detector cableado al `POST /api/extracciones` (umbral 0.85); cuando el score no alcanza se ofrece modal de confirmación manual. Favoritos en `usuarios.preferencias.bancosFavoritos` con endpoints `POST/DELETE /api/usuarios/favoritos`. Vista de detalle provisoria en `/extracciones/[id]` (polling) que reusará Fase 4 dentro de cada pestaña del workspace. `PATCH /api/extracciones/[id]` para asignar perfilId tras el hecho.
+- **Fase 3 — Home**: ruta `/` completa con DropzoneRapido + tabs (banco/billetera/tarjeta/favoritos) + grid de cards + slide-over PanelProducto + carrusel últimos. Detector cableado al `POST /api/extracciones` (umbral 0.85); cuando el score no alcanza se ofrece modal de confirmación manual. Favoritos en `usuarios.preferencias.bancosFavoritos` con endpoints `POST/DELETE /api/usuarios/favoritos`. `PATCH /api/extracciones/[id]` para asignar perfilId tras el hecho.
+- **Fase 4 — Workspace**: ruta `/workspace` con pestañas tipo navegador, store Zustand con `persist` (localStorage) + sync a Mongo (debounced 500ms) via `useWorkspaceSync`. Endpoints `GET/PUT /api/usuarios/pestanas` (recorte server-side al `MAX_PESTANAS_ABIERTAS`). Atajos: `Cmd/Ctrl+W`, `Cmd/Ctrl+Shift+W`, `Cmd/Ctrl+1..9`. Dropzone/panel/carrusel/modal de la Home abren pestaña + redirigen a `/workspace`. La vista `/extracciones/[id]` standalone queda accesible para bookmarks.
 
 **Decisión vigente**: deploy a Vercel pausado, todo local. Verificación de cierre de fase = tests + lint + typecheck + build local (sin `git push` ni Vercel).
 

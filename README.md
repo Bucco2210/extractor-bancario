@@ -105,6 +105,15 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Endpoints CRUD `/api/perfiles/*` (lectura para sesión, escritura solo `admin`).
 - Detector con OpenAI: `POST /api/perfiles/detectar` devuelve top-N candidatos con score 0–1 y razones. Aún no cableado al upload (eso es Fase 3).
 
+### ✅ Fase 4 — Workspace con pestañas (cerrada)
+- Store Zustand del workspace con `persist` (localStorage) + sync a Mongo (debounced 500ms) via `useWorkspaceSync`.
+- Layout `/workspace` con `WorkspaceBar` (pestañas tipo navegador + botón `+`), `SelectorPerfil` arriba del contenido, `VistaEstadoExtraccion` reusada por pestaña.
+- Endpoint `GET/PUT /api/usuarios/pestanas` — el server recorta al `MAX_PESTANAS_ABIERTAS` y normaliza para que como máximo una sea `activa`.
+- Atajos: `Cmd/Ctrl+W` (cerrar), `Cmd/Ctrl+Shift+W` (cerrar todas), `Cmd/Ctrl+1..9` (ir a pestaña N).
+- Integración Home → workspace: dropzone/panel/carrusel/modal abren pestaña y redirigen; banner en Home con cantidad de pestañas abiertas.
+- 16 tests nuevos (store puro: abrir/dedupe, cerrar/auto-activar, límite, renombrar, (de)serialización Mongo).
+- Split view y reorder por drag postergados (Fase 6 / 8 respectivamente).
+
 ### ✅ Fase 3 — Home con tabs de bancos (cerrada)
 - Ruta `/` con layout completo: dropzone rápido + tabs de categoría + grid de cards + carrusel últimos.
 - DropzoneRapido con detector cableado al upload (`UMBRAL_AUTO_DETECCION = 0.85`).
@@ -247,15 +256,16 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Fases 1, 2 y 3 cerradas.** Próximo paso: Fase 4 (workspace con pestañas).
+**Fases 1, 2, 3 y 4 cerradas.** Próximo paso: Fase 5 (aprendizaje de formato).
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
 | 1 — Setup y MVP | ✅ Cerrada | Upload + extracción async con chunking, persistencia incremental, reanudación, export XLSX, auth credentials. |
 | 2 — Perfiles de extracción | ✅ Cerrada | Modelo `PerfilExtraccion`, 17 seeds idempotentes, CRUD `/api/perfiles/*` con admin gate, detector `POST /api/perfiles/detectar`. |
-| 3 — Home con tabs de bancos | ✅ Cerrada | Home `/` completa con dropzone + tabs + grid + slide-over + carrusel, detector cableado al upload, favoritos, vista de detalle `/extracciones/[id]`. |
-| 4 — Workspace con pestañas | ⏳ Próxima | Zustand + persist, layout `/workspace`, sincronización a Mongo, atajos. |
-| 5–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
+| 3 — Home con tabs de bancos | ✅ Cerrada | Home `/` con dropzone + tabs + grid + slide-over + carrusel, detector cableado al upload, favoritos, vista de detalle `/extracciones/[id]`. |
+| 4 — Workspace con pestañas | ✅ Cerrada | `/workspace` con pestañas tipo navegador, store Zustand + persist + sync a Mongo, atajos, integración con Home. |
+| 5 — Aprendizaje | ⏳ Próxima | Detector de formato por huella, reglas determinísticas, UI `/formatos`. |
+| 6–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
 
 Decisiones operativas vigentes:
 

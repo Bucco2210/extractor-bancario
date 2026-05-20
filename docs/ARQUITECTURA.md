@@ -1,6 +1,6 @@
 # Arquitectura — B&B Tech
 
-> Estado: Fase 3 (Home con tabs de bancos, detector cableado al upload, vista de detalle provisoria). Las secciones marcadas como **pendiente** se completan en fases posteriores.
+> Estado: Fase 4 (workspace con pestañas + sync a Mongo + atajos de teclado). Las secciones marcadas como **pendiente** se completan en fases posteriores.
 
 ## Visión general
 
@@ -22,11 +22,14 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 ┌────────────────────────────────────────────────────────────┐
 │ UI (React 19 + Tailwind v4 + shadcn/ui base-nova)          │
 │  app/(ui)/page.tsx           → Home (tabs + grid + carrusel)│
-│  app/(ui)/extracciones/[id]  → vista de detalle/polling     │
+│  app/(ui)/workspace/page.tsx → Workspace con pestañas       │
+│  app/(ui)/extracciones/[id]  → vista de detalle standalone  │
 │  app/(ui)/login/...          → Login con Auth.js v5         │
 │  app/components/home/...     → Home, dropzone, tabs, panel  │
+│  app/components/workspace/...→ Workspace, bar, selector     │
 │  app/components/extracciones → EstadoExtraccion (polling)   │
 │  app/components/ui/...       → shadcn primitives            │
+│  app/stores/workspace.ts     → Zustand store + persist      │
 ├────────────────────────────────────────────────────────────┤
 │ API Routes (Next.js, runtime nodejs)                       │
 │  POST /api/extracciones                → upload + detector  │
@@ -43,6 +46,8 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  GET  /api/home/resumen                → bancos + últimos   │
 │  POST /api/usuarios/favoritos          → marcar favorito    │
 │  DELETE /api/usuarios/favoritos        → desmarcar          │
+│  GET  /api/usuarios/pestanas           → hidratar workspace │
+│  PUT  /api/usuarios/pestanas           → persistir pestañas │
 │  /api/auth/[...nextauth]               → Auth.js handlers   │
 ├────────────────────────────────────────────────────────────┤
 │ Middleware                                                 │
@@ -248,18 +253,47 @@ completo del comportamiento en [docs/HOME_UX.md](./HOME_UX.md). Resumen:
 - **Favoritos** vive en `usuarios.preferencias.bancosFavoritos` como
   array de `entidad.slug`. Toggle optimista con revert en falla.
 
-## Vista de detalle de extracción (Fase 3, provisoria)
+## Vista de detalle de extracción
 
-`/extracciones/[id]` renderiza `VistaEstadoExtraccion` (client component
-con polling cada 1.5s). Migrada del panel embebido en el upload de
-Fase 1; cuando llegue Fase 4 con `/workspace`, se reusa adentro de una
-pestaña.
+`VistaEstadoExtraccion` es el componente client que pollea
+`GET /api/extracciones/:id` cada 1.5s y renderiza estado, progreso,
+movimientos, errores y export Excel. Vive en
+`app/components/extracciones/EstadoExtraccion.tsx`.
+
+Se monta desde dos lugares:
+
+- `/extracciones/[id]` — vista standalone (bookmarks, links externos).
+- `/workspace` — dentro de cada pestaña, con `key={extraccionId}` para
+  reiniciar el polling al cambiar de pestaña.
+
+---
+
+## Workspace (Fase 4)
+
+El workspace (`/workspace`) tiene pestañas tipo navegador. Detalle
+completo en [docs/WORKSPACE.md](./WORKSPACE.md). Resumen:
+
+- **Store Zustand** (`app/stores/workspace.ts`) con `persist`
+  (localStorage por máquina). El estado expuesto es
+  `{ pestanas, activeId, hidratada }` con acciones puras testeables.
+- **Sincronización a Mongo** (`useWorkspaceSync`) — hidrata desde
+  Mongo en mount si el local está vacío; persiste con `PUT` debounced
+  500 ms. El servidor recorta al `MAX_PESTANAS_ABIERTAS` y normaliza
+  para que como máximo una pestaña tenga `activa: true`.
+- **Una pestaña por extracción**: `abrir` dedupea por `extraccionId`.
+- **Cerrar con auto-activar adyacente**: lógica pura en `reducirCerrar`.
+- **Atajos**: `Cmd/Ctrl + W` cierra activa, `Cmd/Ctrl + Shift + W`
+  cierra todas, `Cmd/Ctrl + 1..9` activa por posición.
+- **Integración con Home**: tras upload, el redirect pasa a
+  `/workspace` (en vez de `/extracciones/[id]`). La Home muestra un
+  banner *"Tenés N extractos abiertos en el workspace"* cuando hay
+  pestañas, y el carrusel de últimos también abre pestañas.
 
 ---
 
 ## Pendientes para fases siguientes
 
-- **Fase 4**: `/workspace` con pestañas tipo navegador, Zustand persist, sincronización con `usuarios.preferencias.pestañasAbiertas`.
+- **Fase 5**: aprendizaje de formato por huella + reglas determinísticas + UI `/formatos`.
 - **Fase 4**: workspace con pestañas tipo navegador.
 - **Fase 5**: aprendizaje de formato + reglas determinísticas.
 - **Fase 6**: conciliación con segunda fuente.

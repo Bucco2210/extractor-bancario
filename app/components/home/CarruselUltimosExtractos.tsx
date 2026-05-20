@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowRight, FileSpreadsheet } from "lucide-react";
 import type { UltimoExtracto } from "@/lib/home-tipos";
 
@@ -32,8 +31,10 @@ const ETIQUETA_ESTADO: Record<
 
 export function CarruselUltimosExtractos({
   ultimos,
+  onAbrir,
 }: {
   ultimos: UltimoExtracto[];
+  onAbrir: (u: UltimoExtracto) => void;
 }) {
   if (ultimos.length === 0) return null;
   return (
@@ -50,10 +51,11 @@ export function CarruselUltimosExtractos({
             cls: "bg-muted text-muted-foreground",
           };
           return (
-            <Link
+            <button
+              type="button"
               key={u.id}
-              href={`/extracciones/${u.id}`}
-              className="group flex min-w-[180px] shrink-0 flex-col gap-2 rounded-lg border bg-card p-3 text-sm transition-colors hover:border-primary/60"
+              onClick={() => onAbrir(u)}
+              className="group flex min-w-[180px] shrink-0 flex-col gap-2 rounded-lg border bg-card p-3 text-left text-sm transition-colors hover:border-primary/60"
             >
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
@@ -75,7 +77,7 @@ export function CarruselUltimosExtractos({
                 </span>
               </div>
               <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground/40 transition-colors group-hover:text-primary" />
-            </Link>
+            </button>
           );
         })}
       </div>

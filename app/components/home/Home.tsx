@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowRight } from "lucide-react";
 import { DropzoneRapido } from "./DropzoneRapido";
 import { TabsCategoriaEntidad } from "./TabsCategoriaEntidad";
 import { GridBancos } from "./GridBancos";
@@ -11,6 +12,7 @@ import { PanelProducto } from "./PanelProducto";
 import { CarruselUltimosExtractos } from "./CarruselUltimosExtractos";
 import { ModalDeteccionDudosa } from "./ModalDeteccionDudosa";
 import { bancosVisibles, perfilesVisibles } from "@/lib/home-tipos";
+import { useWorkspaceStore } from "@/stores/workspace";
 import type {
   Banco,
   CategoriaTab,
@@ -144,12 +146,52 @@ export function Home() {
     [],
   );
 
+  const abrirEnWorkspace = useCallback(
+    (input: {
+      extraccionId: string;
+      titulo: string;
+      perfilId?: string | null;
+    }) => {
+      const id = useWorkspaceStore.getState().abrir(input);
+      if (id === null) {
+        toast.error(
+          "Llegaste al límite de pestañas abiertas. Cerrá alguna antes de abrir otra.",
+        );
+        router.push(`/extracciones/${input.extraccionId}`);
+        return;
+      }
+      router.push("/workspace");
+    },
+    [router],
+  );
+
+  const tituloDesdeResumen = useCallback(
+    (perfilId: string | null | undefined): string | null => {
+      if (!perfilId || !resumen) return null;
+      for (const b of resumen.bancos) {
+        if (b.perfiles.some((p) => p.id === perfilId)) {
+          return b.entidad.nombre;
+        }
+      }
+      return null;
+    },
+    [resumen],
+  );
+
   const manejarRespuestaUpload = useCallback(
     async (res: RespuestaInicioExtraccion) => {
       if (res.deteccion?.auto && res.deteccion.mejor) {
-        const slug = res.deteccion.mejor.slug;
-        toast.success(`Detectado: ${slug} (${(res.deteccion.mejor.score * 100).toFixed(0)}%)`);
-        router.push(`/extracciones/${res.id}`);
+        const tituloFallback =
+          tituloDesdeResumen(res.deteccion.mejor.perfilId) ??
+          res.deteccion.mejor.slug;
+        toast.success(
+          `Detectado: ${tituloFallback} (${(res.deteccion.mejor.score * 100).toFixed(0)}%)`,
+        );
+        abrirEnWorkspace({
+          extraccionId: res.id,
+          titulo: tituloFallback,
+          perfilId: res.perfilId,
+        });
         return;
       }
       if (res.deteccion && res.deteccion.candidatos.length > 0) {
@@ -160,9 +202,13 @@ export function Home() {
         return;
       }
       // Sin detector (perfil eligió manualmente o no había candidatos)
-      router.push(`/extracciones/${res.id}`);
+      abrirEnWorkspace({
+        extraccionId: res.id,
+        titulo: tituloDesdeResumen(res.perfilId) ?? "Cargando…",
+        perfilId: res.perfilId,
+      });
     },
-    [router],
+    [abrirEnWorkspace, tituloDesdeResumen],
   );
 
   const asignarPerfilAExtraccion = useCallback(
@@ -185,10 +231,14 @@ export function Home() {
         toast.error(`No pude asignar el perfil: ${msg}`);
       } finally {
         setDeteccionDudosa(null);
-        router.push(`/extracciones/${extraccionId}`);
+        abrirEnWorkspace({
+          extraccionId,
+          titulo: tituloDesdeResumen(perfil.id) ?? perfil.nombre,
+          perfilId: perfil.id,
+        });
       }
     },
-    [router],
+    [abrirEnWorkspace, tituloDesdeResumen],
   );
 
   return (
@@ -202,6 +252,8 @@ export function Home() {
           lista.
         </p>
       </header>
+
+      <BannerWorkspace />
 
       <DropzoneRapido onIniciar={(_, res) => manejarRespuestaUpload(res)} />
 
@@ -238,7 +290,21 @@ export function Home() {
         )}
       </section>
 
-      {resumen ? <CarruselUltimosExtractos ultimos={resumen.ultimos} /> : null}
+      {resumen ? (
+        <CarruselUltimosExtractos
+          ultimos={resumen.ultimos}
+          onAbrir={(u) =>
+            abrirEnWorkspace({
+              extraccionId: u.id,
+              titulo:
+                u.banco && u.periodo
+                  ? `${u.banco} · ${u.periodo}`
+                  : u.banco ?? u.perfilNombre ?? "Extracto",
+              perfilId: null,
+            })
+          }
+        />
+      ) : null}
 
       {bancoAbierto ? (
         <PanelProducto
@@ -261,15 +327,45 @@ export function Home() {
           onSaltar={() => {
             const id = deteccionDudosa.extraccionId;
             setDeteccionDudosa(null);
-            router.push(`/extracciones/${id}`);
+            abrirEnWorkspace({
+              extraccionId: id,
+              titulo: "Cargando…",
+              perfilId: null,
+            });
           }}
           onCancelar={() => {
             const id = deteccionDudosa.extraccionId;
             setDeteccionDudosa(null);
-            router.push(`/extracciones/${id}`);
+            abrirEnWorkspace({
+              extraccionId: id,
+              titulo: "Cargando…",
+              perfilId: null,
+            });
           }}
         />
       ) : null}
     </div>
+  );
+}
+
+function BannerWorkspace() {
+  const cantidad = useWorkspaceStore((s) => s.pestanas.length);
+  if (cantidad === 0) return null;
+  return (
+    <Link
+      href="/workspace"
+      className="inline-flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-4 py-2 text-sm transition-colors hover:bg-muted"
+    >
+      <span>
+        Tenés{" "}
+        <strong className="font-semibold">{cantidad}</strong>{" "}
+        {cantidad === 1 ? "extracto abierto" : "extractos abiertos"} en el
+        workspace.
+      </span>
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        Ir al workspace
+        <ArrowRight className="h-3.5 w-3.5" />
+      </span>
+    </Link>
   );
 }
