@@ -8,6 +8,7 @@ import { definirChunks } from "@/lib/openai";
 import { getBlobStorage } from "@/lib/blob";
 import { Extraccion } from "@/models/Extraccion";
 import { PerfilExtraccion } from "@/models/PerfilExtraccion";
+import { FormatoAprendido } from "@/models/FormatoAprendido";
 import { AppError, respuestaError } from "@/lib/errors";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -17,6 +18,12 @@ import {
   type CandidatoPerfil,
   type Coincidencia,
 } from "@/lib/detector-perfil";
+import { calcularHuella } from "@/lib/huella";
+import { aplicarRegla } from "@/lib/regla-determinista";
+import {
+  registrarExtraccionPorRegla,
+  registrarFalloRegla,
+} from "@/lib/aprendizaje";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -171,6 +178,125 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
     }
 
+    const { huella, resumen: resumenHuella } = calcularHuella(
+      textoPdf.textoCompleto,
+      env.APRENDIZAJE_HUELLA_LINEAS,
+    );
+
+    // Si tenemos perfil y existe un FormatoAprendido con regla activa
+    // para esta huella, intentamos extraer determinísticamente y
+    // saltamos OpenAI.
+    let reglaResultado: Awaited<ReturnType<typeof aplicarRegla>> | null = null;
+    let formatoAplicado: { _id: import("mongoose").Types.ObjectId } | null = null;
+    if (perfilIdFinal) {
+      const formato = await FormatoAprendido.findOne({
+        huella,
+        reglaActiva: true,
+        activo: true,
+        reglaRegex: { $ne: null },
+      })
+        .select({ _id: 1, reglaRegex: 1, perfilId: 1 })
+        .lean();
+      if (formato?.reglaRegex) {
+        const r = aplicarRegla(textoPdf.textoCompleto, formato.reglaRegex);
+        reglaResultado = r;
+        if (
+          !r.errorCompilacion &&
+          r.matchRate >= env.APRENDIZAJE_UMBRAL_MATCH_RATE &&
+          r.movimientos.length > 0
+        ) {
+          formatoAplicado = { _id: formato._id };
+        } else {
+          await registrarFalloRegla(formato._id);
+          logger.warn(
+            {
+              huella,
+              formatoId: String(formato._id),
+              matchRate: r.matchRate,
+              umbral: env.APRENDIZAJE_UMBRAL_MATCH_RATE,
+              error: r.errorCompilacion,
+            },
+            "regla determinística falló — cayendo a OpenAI",
+          );
+        }
+      }
+    }
+
+    // === Camino 1: regla determinística ===
+    if (formatoAplicado && reglaResultado) {
+      const docRegla = await Extraccion.create({
+        usuarioId: session.user.id,
+        perfilId: perfilIdFinal,
+        banco: bancoFinal,
+        cuenta: null,
+        periodo: null,
+        titular: null,
+        estado: "extraido",
+        fuente: "regla",
+        huella,
+        formatoAprendidoId: formatoAplicado._id,
+        movimientos: reglaResultado.movimientos,
+        archivo: {
+          nombre: archivo.name,
+          tamano: archivo.size,
+          contentType: archivo.type,
+          blobKey: blob.key,
+          blobUrl: blob.url,
+        },
+        _meta: {
+          modelo: "regla_determinista",
+          tokensInput: deteccion?.tokensInput ?? 0,
+          tokensOutput: deteccion?.tokensOutput ?? 0,
+          tiempoMs: Date.now() - t0,
+          paginasTotal: textoPdf.totalPaginas,
+          chunksTotal: 0,
+          chunksOk: 0,
+          chunksFallidos: [],
+          chunksDefinicion: [],
+          chunksCompletados: [],
+        },
+      });
+
+      await registrarExtraccionPorRegla(formatoAplicado._id);
+
+      logger.info(
+        {
+          extraccionId: String(docRegla._id),
+          formatoId: String(formatoAplicado._id),
+          matchRate: reglaResultado.matchRate,
+          movimientos: reglaResultado.movimientos.length,
+          totalMs: Date.now() - t0,
+        },
+        "extracción resuelta por regla determinística (sin OpenAI)",
+      );
+
+      return NextResponse.json(
+        {
+          id: String(docRegla._id),
+          estado: "extraido" as const,
+          fuente: "regla" as const,
+          paginasTotal: textoPdf.totalPaginas,
+          chunksTotal: 0,
+          perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
+          deteccion: deteccion
+            ? {
+                mejor: deteccion.mejor,
+                candidatos: deteccion.candidatos,
+                umbral: UMBRAL_AUTO_DETECCION,
+                auto: deteccionAuto,
+              }
+            : null,
+          reglaAplicada: {
+            formatoId: String(formatoAplicado._id),
+            matchRate: reglaResultado.matchRate,
+            movimientos: reglaResultado.movimientos.length,
+          },
+        },
+        { status: 201 },
+      );
+    }
+
+    // === Camino 2: pipeline OpenAI normal ===
     const doc = await Extraccion.create({
       usuarioId: session.user.id,
       perfilId: perfilIdFinal,
@@ -179,6 +305,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       periodo: null,
       titular: null,
       estado: "procesando",
+      fuente: "openai",
+      huella,
+      formatoAprendidoId: null,
       movimientos: [],
       archivo: {
         nombre: archivo.name,
@@ -215,6 +344,7 @@ export async function POST(req: Request): Promise<NextResponse> {
             : "sin_perfil",
         paginas: textoPdf.totalPaginas,
         chunks: chunks.length,
+        huella,
         msHastaResponse: Date.now() - t0,
       },
       "[5/5] doc creado, lanzando runner en background",
@@ -225,12 +355,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       chunks,
       banco: bancoFinal,
       motivo: "inicial",
+      huella,
+      resumenHuella,
+      perfilId: perfilIdFinal,
     });
 
     return NextResponse.json(
       {
         id: String(doc._id),
         estado: "procesando" as const,
+        fuente: "openai" as const,
         paginasTotal: textoPdf.totalPaginas,
         chunksTotal: chunks.length,
         perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
@@ -242,6 +376,7 @@ export async function POST(req: Request): Promise<NextResponse> {
               auto: deteccionAuto,
             }
           : null,
+        reglaAplicada: null,
       },
       { status: 202 },
     );

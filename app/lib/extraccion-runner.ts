@@ -4,12 +4,19 @@ import { conectarMongoose } from "@/lib/mongo";
 import { Extraccion } from "@/models/Extraccion";
 import { procesarChunks, type ChunkDefinicion } from "@/lib/openai";
 import { logger } from "@/lib/logger";
+import { registrarFormatoTrasIA } from "@/lib/aprendizaje";
 
 type CorrerParams = {
   extraccionId: string;
   chunks: ChunkDefinicion[];
   banco?: string | null;
   motivo: "inicial" | "reanudar";
+  /** Huella del documento, calculada antes de invocar al runner. */
+  huella?: string | null;
+  /** Resumen normalizado de la huella (debug en /formatos). */
+  resumenHuella?: string | null;
+  /** Perfil ya asignado a la extracción (si lo hay). */
+  perfilId?: Types.ObjectId | null;
 };
 
 const INTENTOS_MONGO = 4;
@@ -170,18 +177,57 @@ export async function correrExtraccion(params: CorrerParams): Promise<void> {
     const hayFallidos = (doc?._meta?.chunksFallidos?.length ?? 0) > 0;
     const estadoFinal: "extraido" | "parcial" = hayFallidos ? "parcial" : "extraido";
 
+    // Si quedó completo y tenemos huella + perfil, upsert al
+    // FormatoAprendido para que aparezca en /formatos. Solo registramos
+    // en la corrida "inicial" — la reanudación no cambia la huella ni
+    // crea un formato nuevo.
+    let formatoAprendidoId: Types.ObjectId | null = null;
+    if (
+      motivo === "inicial" &&
+      estadoFinal === "extraido" &&
+      params.huella &&
+      params.perfilId
+    ) {
+      try {
+        formatoAprendidoId = await registrarFormatoTrasIA({
+          huella: params.huella,
+          resumenHuella: params.resumenHuella ?? "",
+          perfilId: params.perfilId,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, extraccionId },
+          "[runner] no pude registrar el formato aprendido",
+        );
+      }
+    }
+
+    const setFinal: Record<string, unknown> = {
+      estado: estadoFinal,
+      error: null,
+    };
+    if (formatoAprendidoId) setFinal.formatoAprendidoId = formatoAprendidoId;
+
     await conReintentosMongo(
       () =>
         Extraccion.updateOne(
           { _id: new Types.ObjectId(extraccionId) },
-          { $set: { estado: estadoFinal, error: null } },
+          { $set: setFinal },
         ),
       "set estado final",
       extraccionId,
     );
 
     logger.info(
-      { extraccionId, motivo, estadoFinal, totalMs: Date.now() - inicio },
+      {
+        extraccionId,
+        motivo,
+        estadoFinal,
+        formatoAprendidoId: formatoAprendidoId
+          ? String(formatoAprendidoId)
+          : null,
+        totalMs: Date.now() - inicio,
+      },
       "[runner] fin",
     );
   } catch (err) {

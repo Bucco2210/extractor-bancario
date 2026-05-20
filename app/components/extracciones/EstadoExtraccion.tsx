@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   RefreshCw,
   ArrowLeft,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 
@@ -34,6 +36,8 @@ export type EstadoExtraccion =
   | "parcial"
   | "error";
 
+export type FuenteExtraccion = "regla" | "openai";
+
 export type EstadoServidor = {
   id: string;
   estado: EstadoExtraccion;
@@ -42,6 +46,9 @@ export type EstadoServidor = {
   periodo: string | null;
   titular: string | null;
   error: string | null;
+  fuente?: FuenteExtraccion;
+  huella?: string | null;
+  formatoAprendidoId?: string | null;
   movimientos: Movimiento[];
   _meta: {
     modelo: string;
@@ -257,12 +264,31 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <div className="text-xs text-muted-foreground">
-        {estado._meta.modelo ? <>Modelo {estado._meta.modelo} · </> : null}
-        {estado._meta.chunksOk}/{estado._meta.chunksTotal} bloques ·{" "}
-        {estado._meta.paginasTotal} páginas ·{" "}
-        {estado._meta.tokensInput + estado._meta.tokensOutput} tokens ·{" "}
-        {estado._meta.tiempoMs} ms
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {estado.fuente === "regla" ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+            <Zap className="h-3 w-3" />
+            Regla determinística
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+            <Sparkles className="h-3 w-3" />
+            Extracción por IA
+          </span>
+        )}
+        {estado._meta.modelo ? <span>Modelo {estado._meta.modelo}</span> : null}
+        {estado.fuente !== "regla" ? (
+          <span>
+            {estado._meta.chunksOk}/{estado._meta.chunksTotal} bloques
+          </span>
+        ) : null}
+        <span>{estado._meta.paginasTotal} páginas</span>
+        {estado.fuente !== "regla" ? (
+          <span>
+            {estado._meta.tokensInput + estado._meta.tokensOutput} tokens
+          </span>
+        ) : null}
+        <span>{estado._meta.tiempoMs} ms</span>
       </div>
 
       <div className="overflow-x-auto rounded-md border">

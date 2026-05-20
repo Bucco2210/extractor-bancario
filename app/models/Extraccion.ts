@@ -74,6 +74,18 @@ const extraccionSchema = new Schema(
     archivo: { type: archivoSchema, required: true },
     _meta: { type: metaSchema, required: true },
     error: { type: String, default: null },
+    fuente: {
+      type: String,
+      enum: ["regla", "openai"],
+      default: "openai",
+      required: true,
+    },
+    huella: { type: String, default: null, index: true },
+    formatoAprendidoId: {
+      type: Schema.Types.ObjectId,
+      ref: "FormatoAprendido",
+      default: null,
+    },
   },
   { timestamps: true, collection: "extracciones" },
 );

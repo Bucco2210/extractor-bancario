@@ -64,6 +64,10 @@ const envSchema = z.object({
   EXTRACCION_PAGINAS_POR_CHUNK: z.coerce.number().int().positive().default(6),
   EXTRACCION_CHUNKS_PARALELO: z.coerce.number().int().positive().default(3),
 
+  // Aprendizaje de formato
+  APRENDIZAJE_HUELLA_LINEAS: z.coerce.number().int().positive().default(30),
+  APRENDIZAJE_UMBRAL_MATCH_RATE: z.coerce.number().min(0).max(1).default(0.8),
+
   // Conciliación
   CONCILIACION_TOLERANCIA_DIAS: z.coerce.number().int().nonnegative().default(2),
   CONCILIACION_TOLERANCIA_IMPORTE_PESOS: z.coerce

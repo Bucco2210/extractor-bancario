@@ -105,6 +105,14 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Endpoints CRUD `/api/perfiles/*` (lectura para sesión, escritura solo `admin`).
 - Detector con OpenAI: `POST /api/perfiles/detectar` devuelve top-N candidatos con score 0–1 y razones. Aún no cableado al upload (eso es Fase 3).
 
+### ✅ Fase 5 — Aprendizaje de formato (cerrada)
+- Huella SHA-256 de líneas normalizadas (env `APRENDIZAJE_HUELLA_LINEAS=30`): misma huella para extractos del mismo banco con datos distintos, distinta entre bancos.
+- Modelo `FormatoAprendido` con `perfilId`, `huella`, `reglaRegex`, `reglaActiva`, stats (ok / IA / fallos) y notas.
+- Pipeline al subir un PDF: si hay regla activa para la huella y match-rate ≥ `APRENDIZAJE_UMBRAL_MATCH_RATE` (default 0.8), persiste `fuente="regla"` directo (sin OpenAI). Si no, fallback IA y upsert del formato al cerrar.
+- Endpoints `/api/formatos/*` (lectura sesión, edición admin) + `POST /[id]/probar` para validar el regex antes de activarlo.
+- UI `/formatos` (admin) con lista filtrable + editor de regla + área de prueba en vivo. Vista de detalle de extracción muestra badge "Regla determinística" vs "Extracción por IA".
+- 25 tests nuevos (huella estable, parser determinista AR/US, schema zod).
+
 ### ✅ Fase 4 — Workspace con pestañas (cerrada)
 - Store Zustand del workspace con `persist` (localStorage) + sync a Mongo (debounced 500ms) via `useWorkspaceSync`.
 - Layout `/workspace` con `WorkspaceBar` (pestañas tipo navegador + botón `+`), `SelectorPerfil` arriba del contenido, `VistaEstadoExtraccion` reusada por pestaña.
@@ -256,7 +264,7 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Fases 1, 2, 3 y 4 cerradas.** Próximo paso: Fase 5 (aprendizaje de formato).
+**Fases 1, 2, 3, 4 y 5 cerradas.** Próximo paso: Fase 6 (conciliación con segunda fuente).
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
@@ -264,8 +272,9 @@ Se irá completando a lo largo de las fases:
 | 2 — Perfiles de extracción | ✅ Cerrada | Modelo `PerfilExtraccion`, 17 seeds idempotentes, CRUD `/api/perfiles/*` con admin gate, detector `POST /api/perfiles/detectar`. |
 | 3 — Home con tabs de bancos | ✅ Cerrada | Home `/` con dropzone + tabs + grid + slide-over + carrusel, detector cableado al upload, favoritos, vista de detalle `/extracciones/[id]`. |
 | 4 — Workspace con pestañas | ✅ Cerrada | `/workspace` con pestañas tipo navegador, store Zustand + persist + sync a Mongo, atajos, integración con Home. |
-| 5 — Aprendizaje | ⏳ Próxima | Detector de formato por huella, reglas determinísticas, UI `/formatos`. |
-| 6–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
+| 5 — Aprendizaje | ✅ Cerrada | Huella + `FormatoAprendido` + regla regex, pipeline regla-primero con fallback IA, UI `/formatos` con editor y área de prueba. |
+| 6 — Conciliación | ⏳ Próxima | Segunda fuente, matcheo con tolerancias, UI doble panel + export. |
+| 7–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
 
 Decisiones operativas vigentes:
 

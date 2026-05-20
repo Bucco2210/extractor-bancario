@@ -48,6 +48,11 @@ export async function GET(
       periodo: doc.periodo,
       titular: doc.titular,
       error: doc.error,
+      fuente: doc.fuente ?? "openai",
+      huella: doc.huella ?? null,
+      formatoAprendidoId: doc.formatoAprendidoId
+        ? String(doc.formatoAprendidoId)
+        : null,
       movimientos: doc.movimientos,
       _meta: {
         modelo: doc._meta.modelo,

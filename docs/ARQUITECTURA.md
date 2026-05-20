@@ -1,6 +1,6 @@
 # Arquitectura — B&B Tech
 
-> Estado: Fase 4 (workspace con pestañas + sync a Mongo + atajos de teclado). Las secciones marcadas como **pendiente** se completan en fases posteriores.
+> Estado: Fase 5 (aprendizaje de formato + reglas determinísticas + UI /formatos). Las secciones marcadas como **pendiente** se completan en fases posteriores.
 
 ## Visión general
 
@@ -24,9 +24,11 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  app/(ui)/page.tsx           → Home (tabs + grid + carrusel)│
 │  app/(ui)/workspace/page.tsx → Workspace con pestañas       │
 │  app/(ui)/extracciones/[id]  → vista de detalle standalone  │
+│  app/(ui)/formatos/page.tsx  → UI de formatos aprendidos    │
 │  app/(ui)/login/...          → Login con Auth.js v5         │
 │  app/components/home/...     → Home, dropzone, tabs, panel  │
 │  app/components/workspace/...→ Workspace, bar, selector     │
+│  app/components/formatos/... → editor de reglas             │
 │  app/components/extracciones → EstadoExtraccion (polling)   │
 │  app/components/ui/...       → shadcn primitives            │
 │  app/stores/workspace.ts     → Zustand store + persist      │
@@ -48,6 +50,11 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  DELETE /api/usuarios/favoritos        → desmarcar          │
 │  GET  /api/usuarios/pestanas           → hidratar workspace │
 │  PUT  /api/usuarios/pestanas           → persistir pestañas │
+│  GET  /api/formatos                    → list formatos      │
+│  GET  /api/formatos/[id]               → detalle            │
+│  PATCH /api/formatos/[id]              → editar regla (admin)│
+│  DELETE /api/formatos/[id]             → soft delete (admin)│
+│  POST /api/formatos/[id]/probar        → probar regex       │
 │  /api/auth/[...nextauth]               → Auth.js handlers   │
 ├────────────────────────────────────────────────────────────┤
 │ Middleware                                                 │
@@ -62,6 +69,11 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  detector-perfil.ts → detector de perfil (IA + parser)     │
 │  perfiles-schema.ts → zod schemas perfiles CRUD            │
 │  perfiles-serializer.ts → DTO de PerfilExtraccion          │
+│  huella.ts          → SHA-256 de líneas normalizadas       │
+│  regla-determinista.ts → aplicar regex línea-por-línea     │
+│  aprendizaje.ts     → upsert FormatoAprendido + stats      │
+│  formatos-schema.ts → zod schemas formatos CRUD            │
+│  formatos-serializer.ts → DTO de FormatoAprendido          │
 │  home-resumen.ts    → armado del payload de /home/resumen  │
 │  home-tipos.ts      → tipos compartidos UI/server + filtros│
 │  colores-entidad.ts → paleta + iniciales para avatars      │
@@ -74,7 +86,7 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  errors.ts          → AppError + respuestaError            │
 ├────────────────────────────────────────────────────────────┤
 │ Modelos (app/models, Mongoose)                             │
-│  Usuario, PerfilExtraccion, Extraccion                     │
+│  Usuario, PerfilExtraccion, Extraccion, FormatoAprendido   │
 ├────────────────────────────────────────────────────────────┤
 │ Persistencia                                               │
 │  MongoDB local o Atlas (MONGODB_URI)                       │
@@ -291,9 +303,30 @@ completo en [docs/WORKSPACE.md](./WORKSPACE.md). Resumen:
 
 ---
 
+## Aprendizaje de formato (Fase 5)
+
+`POST /api/extracciones` calcula la **huella** del PDF (SHA-256 de las
+primeras N líneas normalizadas — fechas/montos/dígitos removidos). Si
+hay un `FormatoAprendido` con esa huella y regla activa, intenta
+extracción **determinística** con regex. Si `matchRate >= 0.8`, la
+extracción cierra `fuente="regla"` sin llamar a OpenAI. Si la regla
+falla, fallback al pipeline OpenAI normal y `stats.extraccionesFallidas`
+del formato se incrementa.
+
+Al cerrar OK con OpenAI, el runner hace upsert al `FormatoAprendido`
+(creando el doc en blanco si recién aparece esta huella) e incrementa
+`stats.extraccionesIA`. El admin puede entrar a `/formatos`, escribir
+una regla regex, probarla contra una muestra de texto vía
+`POST /api/formatos/[id]/probar` y activarla. La próxima extracción del
+mismo formato va por la regla.
+
+Detalle completo en [docs/APRENDIZAJE.md](./APRENDIZAJE.md).
+
+---
+
 ## Pendientes para fases siguientes
 
-- **Fase 5**: aprendizaje de formato por huella + reglas determinísticas + UI `/formatos`.
+- **Fase 6**: conciliación con segunda fuente, matcheo con tolerancias, doble panel.
 - **Fase 4**: workspace con pestañas tipo navegador.
 - **Fase 5**: aprendizaje de formato + reglas determinísticas.
 - **Fase 6**: conciliación con segunda fuente.
