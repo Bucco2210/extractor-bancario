@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BarraProgresoLudica } from "./BarraProgresoLudica";
+import { PanelConciliaciones } from "@/components/conciliacion/PanelConciliaciones";
 
 export type Movimiento = {
   fecha: string;
@@ -360,6 +361,10 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
             Exportar a Excel
           </a>
         </div>
+      ) : null}
+
+      {puedeExportar && estado.movimientos.length > 0 ? (
+        <PanelConciliaciones extraccionId={estado.id} />
       ) : null}
     </div>
   );

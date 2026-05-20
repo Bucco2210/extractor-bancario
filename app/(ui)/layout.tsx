@@ -34,6 +34,12 @@ export default async function UiLayout({
                 >
                   Workspace
                 </Link>
+                <Link
+                  href="/conciliacion"
+                  className="transition-colors hover:text-foreground"
+                >
+                  Conciliación
+                </Link>
                 {esAdmin ? (
                   <Link
                     href="/formatos"

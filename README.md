@@ -145,10 +145,15 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Asociación formato ↔ perfil.
 - UI `/formatos` para revisar/editar reglas.
 
-### Fase 6 — Conciliación
-- Carga de segunda fuente (cobranzas internas, contabilidad).
-- Matcheo con tolerancias (días, importe, fuzzy de descripción).
-- UI doble panel + export.
+### ✅ Fase 6 — Conciliación (cerrada)
+- Modelo `Conciliacion` con segundaFuente embebida (registros + mapeo + headers), matches 1:1 (con `confirmadoManualmente`), `descartadosExtracto`, `gruposManuales` (sumatorias 1:N / N:1) y estadísticas calculadas server-side.
+- Parser CSV (separador auto, comillas, escape, BOM) + XLSX (`exceljs`) con auto-mapeo de columnas por sinónimos; si falta alguna requerida, devuelve **422 + headers crudos** para que el front presente un mini-mapeador y reintente con `mapeoOverride`.
+- Matcheador determinístico (sin OpenAI) con score combinado `0.4·fecha + 0.3·importe + 0.3·descripción` (`fast-levenshtein`), tolerancias `(días, importe, fuzzy)` desde `.env`, comparación de importes por valor absoluto y asignación 1:1 greedy.
+- Endpoints `GET/POST /api/conciliaciones`, `GET/PATCH/DELETE /api/conciliaciones/[id]`, `GET /api/conciliaciones/[id]/excel` (Resumen + Extracto + Segunda fuente + Grupos manuales).
+- PATCH soporta: editar nombre/notas/tolerancias, `forzarMatch`, `quitarMatch`, `descartarExtracto`, `crearGrupoManual`, `eliminarGrupoManual`, `reMatchear` (preserva manuales y grupos).
+- UI `/conciliacion` (listado) y `/conciliacion/[id]` (doble panel con selección múltiple, barra de acciones contextual, panel de tolerancias, lista de grupos manuales).
+- Integración en `/extracciones/[id]` y `/workspace`: panel "Conciliaciones" con historial + botón **Conciliar / Nueva conciliación** + mini-mapeador in-line para el caso 422.
+- 28 tests nuevos (parser + matcheador + cálculo de estadísticas con grupos).
 
 ### Fase 7 — Robustez
 - OCR vía OpenAI vision para PDFs escaneados.
@@ -259,12 +264,15 @@ Se irá completando a lo largo de las fases:
 - `docs/DEPLOY_VERCEL.md` — pasos de deploy, variables, troubleshooting.
 - `docs/PERFILES_EXTRACCION.md` — catálogo de perfiles seed y cómo agregar nuevos.
 - `docs/HOME_UX.md` — comportamiento detallado de la Home y las tres capas de tabs.
+- `docs/WORKSPACE.md` — pestañas, store Zustand y sync a Mongo.
+- `docs/APRENDIZAJE.md` — huella, reglas regex y pipeline regla-primero.
+- `docs/CONCILIACION.md` — modelo `Conciliacion`, parser CSV/XLSX, matcheador, grupos manuales y UI doble panel.
 
 ---
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4 y 5 cerradas.** Próximo paso: Fase 6 (conciliación con segunda fuente).
+**Fases 1, 2, 3, 4, 5 y 6 cerradas.** Próximo paso: Fase 7 (OCR vision, Inngest, encriptación, cobertura ≥ 70%).
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
@@ -273,7 +281,7 @@ Se irá completando a lo largo de las fases:
 | 3 — Home con tabs de bancos | ✅ Cerrada | Home `/` con dropzone + tabs + grid + slide-over + carrusel, detector cableado al upload, favoritos, vista de detalle `/extracciones/[id]`. |
 | 4 — Workspace con pestañas | ✅ Cerrada | `/workspace` con pestañas tipo navegador, store Zustand + persist + sync a Mongo, atajos, integración con Home. |
 | 5 — Aprendizaje | ✅ Cerrada | Huella + `FormatoAprendido` + regla regex, pipeline regla-primero con fallback IA, UI `/formatos` con editor y área de prueba. |
-| 6 — Conciliación | ⏳ Próxima | Segunda fuente, matcheo con tolerancias, UI doble panel + export. |
+| 6 — Conciliación | ✅ Cerrada | Modelo `Conciliacion`, parser CSV/XLSX con auto-mapeo y 422+mini-mapeador, matcheador determinístico 1:1 con tolerancias, grupos manuales 1:N/N:1, UI doble panel + export Excel + integración con vista de extracto. |
 | 7–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
 
 Decisiones operativas vigentes:
