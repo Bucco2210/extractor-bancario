@@ -36,26 +36,16 @@ export type ResultadoExtraccion = {
   movimientos: MovimientoExtraido[];
 };
 
-export type MetaExtraccion = {
+export type MetaChunk = {
   modelo: string;
   tokensInput: number;
   tokensOutput: number;
   tiempoMs: number;
 };
 
-export type ChunkFallido = {
+export type ChunkDefinicion = {
   indice: number;
-  paginas: number[];
-  error: string;
-};
-
-export type ResultadoChunkeado = {
-  resultado: ResultadoExtraccion;
-  meta: MetaExtraccion & {
-    chunksTotal: number;
-    chunksOk: number;
-    chunksFallidos: ChunkFallido[];
-  };
+  paginas: PaginaTexto[];
 };
 
 const SYSTEM_PROMPT = `Sos un extractor de movimientos de extractos bancarios y de billeteras virtuales argentinas.
@@ -90,11 +80,10 @@ Reglas:
 async function extraerChunk(params: {
   textoExtracto: string;
   banco?: string;
-  modelo?: string;
-}): Promise<{ resultado: ResultadoExtraccion; meta: MetaExtraccion }> {
-  const env = getEnv();
+  modelo: string;
+}): Promise<{ resultado: ResultadoExtraccion; meta: MetaChunk }> {
   const client = getOpenAI();
-  const modelo = params.modelo ?? env.OPENAI_MODEL_DEFAULT;
+  const { modelo } = params;
 
   const userParts: string[] = [];
   if (params.banco) userParts.push(`Banco/entidad: ${params.banco}`);
@@ -127,120 +116,80 @@ async function extraerChunk(params: {
 }
 
 /**
- * Versión legacy single-shot: extrae todo en una sola llamada.
- * Se mantiene para casos chicos o tests. El path productivo es
- * `extraerMovimientosDeChunks`.
+ * Construye las definiciones de chunks numerados a partir de las páginas
+ * del PDF. La numeración es estable: el chunk N siempre cubre las mismas
+ * páginas en una corrida inicial y en una reanudación.
  */
-export async function extraerMovimientos(params: {
-  textoExtracto: string;
-  banco?: string;
-  modelo?: string;
-}): Promise<{ resultado: ResultadoExtraccion; meta: MetaExtraccion }> {
-  return extraerChunk(params);
+export function definirChunks(
+  paginas: PaginaTexto[],
+  tamanoChunk: number,
+): ChunkDefinicion[] {
+  return partirEnChunks(paginas, tamanoChunk).map((paginas, indice) => ({
+    indice,
+    paginas,
+  }));
 }
 
+export type OnChunkOk = (info: {
+  indice: number;
+  paginas: number[];
+  resultado: ResultadoExtraccion;
+  meta: MetaChunk;
+  ms: number;
+}) => Promise<void> | void;
+
+export type OnChunkFalla = (info: {
+  indice: number;
+  paginas: number[];
+  error: string;
+  ms: number;
+}) => Promise<void> | void;
+
 /**
- * Parte las páginas en bloques, las procesa con concurrencia limitada
- * y agrega los resultados. Si algún chunk falla, los demás siguen y
- * el chunk fallido queda registrado en `meta.chunksFallidos`.
+ * Procesa los chunks dados en paralelo, llamando los callbacks por cada
+ * chunk OK o fallido. No agrega resultados: la persistencia incremental
+ * la hace el caller (ideal para reanudación).
  */
-export async function extraerMovimientosDeChunks(params: {
-  paginas: PaginaTexto[];
+export async function procesarChunks(params: {
+  chunks: ChunkDefinicion[];
   banco?: string;
   modelo?: string;
-  onChunkProgreso?: (info: {
-    indice: number;
-    total: number;
-    ok: boolean;
-    paginas: number[];
-    ms: number;
-    movimientos?: number;
-    error?: string;
-  }) => void;
-}): Promise<ResultadoChunkeado> {
+  concurrencia?: number;
+  onChunkOk?: OnChunkOk;
+  onChunkFalla?: OnChunkFalla;
+}): Promise<void> {
+  if (params.chunks.length === 0) return;
   const env = getEnv();
   const modelo = params.modelo ?? env.OPENAI_MODEL_DEFAULT;
-  const tamanoChunk = env.EXTRACCION_PAGINAS_POR_CHUNK;
-  const concurrencia = env.EXTRACCION_CHUNKS_PARALELO;
+  const concurrencia = params.concurrencia ?? env.EXTRACCION_CHUNKS_PARALELO;
 
-  const chunks = partirEnChunks(params.paginas, tamanoChunk);
-  if (chunks.length === 0) {
-    return {
-      resultado: { cuenta: null, periodo: null, titular: null, movimientos: [] },
-      meta: {
-        modelo,
-        tokensInput: 0,
-        tokensOutput: 0,
-        tiempoMs: 0,
-        chunksTotal: 0,
-        chunksOk: 0,
-        chunksFallidos: [],
-      },
-    };
-  }
-
-  const inicioTotal = Date.now();
-  const exitosos: Array<{ indice: number; resultado: ResultadoExtraccion; meta: MetaExtraccion }> = [];
-  const fallidos: ChunkFallido[] = [];
-
-  await ejecutarConPool(chunks, concurrencia, async (chunk, indice) => {
+  await ejecutarConPool(params.chunks, concurrencia, async (chunk) => {
     const t0 = Date.now();
-    const paginasIds = chunk.map((p) => p.numero);
+    const paginasIds = chunk.paginas.map((p) => p.numero);
     try {
-      const textoChunk = chunk.map((p) => p.texto).join("\n\n");
+      const textoChunk = chunk.paginas.map((p) => p.texto).join("\n\n");
       const r = await extraerChunk({
         textoExtracto: textoChunk,
         banco: params.banco,
         modelo,
       });
-      exitosos.push({ indice, resultado: r.resultado, meta: r.meta });
-      params.onChunkProgreso?.({
-        indice,
-        total: chunks.length,
-        ok: true,
+      await params.onChunkOk?.({
+        indice: chunk.indice,
         paginas: paginasIds,
+        resultado: r.resultado,
+        meta: r.meta,
         ms: Date.now() - t0,
-        movimientos: r.resultado.movimientos.length,
       });
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : "Error desconocido";
-      fallidos.push({ indice, paginas: paginasIds, error: mensaje });
-      params.onChunkProgreso?.({
-        indice,
-        total: chunks.length,
-        ok: false,
+      await params.onChunkFalla?.({
+        indice: chunk.indice,
         paginas: paginasIds,
-        ms: Date.now() - t0,
         error: mensaje,
+        ms: Date.now() - t0,
       });
     }
   });
-
-  exitosos.sort((a, b) => a.indice - b.indice);
-  fallidos.sort((a, b) => a.indice - b.indice);
-
-  const resultado: ResultadoExtraccion = {
-    cuenta: primeraConValor(exitosos, (r) => r.resultado.cuenta),
-    periodo: primeraConValor(exitosos, (r) => r.resultado.periodo),
-    titular: primeraConValor(exitosos, (r) => r.resultado.titular),
-    movimientos: exitosos.flatMap((r) => r.resultado.movimientos),
-  };
-
-  const tokensInput = exitosos.reduce((s, r) => s + r.meta.tokensInput, 0);
-  const tokensOutput = exitosos.reduce((s, r) => s + r.meta.tokensOutput, 0);
-
-  return {
-    resultado,
-    meta: {
-      modelo,
-      tokensInput,
-      tokensOutput,
-      tiempoMs: Date.now() - inicioTotal,
-      chunksTotal: chunks.length,
-      chunksOk: exitosos.length,
-      chunksFallidos: fallidos,
-    },
-  };
 }
 
 export function partirEnChunks(
@@ -275,17 +224,6 @@ export async function ejecutarConPool<T>(
     },
   );
   await Promise.all(workers);
-}
-
-function primeraConValor<T>(
-  arr: T[],
-  getter: (item: T) => string | null,
-): string | null {
-  for (const item of arr) {
-    const v = getter(item);
-    if (v) return v;
-  }
-  return null;
 }
 
 export function parsearRespuestaOpenAI(raw: string): ResultadoExtraccion {

@@ -21,15 +21,26 @@ const chunkFallidoSchema = new Schema(
   { _id: false },
 );
 
+const chunkDefinicionSchema = new Schema(
+  {
+    indice: { type: Number, required: true },
+    paginas: { type: [Number], default: [] },
+  },
+  { _id: false },
+);
+
 const metaSchema = new Schema(
   {
     modelo: { type: String, required: true },
     tokensInput: { type: Number, default: 0 },
     tokensOutput: { type: Number, default: 0 },
     tiempoMs: { type: Number, default: 0 },
+    paginasTotal: { type: Number, default: 0 },
     chunksTotal: { type: Number, default: 1 },
-    chunksOk: { type: Number, default: 1 },
+    chunksOk: { type: Number, default: 0 },
     chunksFallidos: { type: [chunkFallidoSchema], default: [] },
+    chunksDefinicion: { type: [chunkDefinicionSchema], default: [] },
+    chunksCompletados: { type: [Number], default: [] },
   },
   { _id: false },
 );
@@ -55,7 +66,7 @@ const extraccionSchema = new Schema(
     titular: { type: String, default: null },
     estado: {
       type: String,
-      enum: ["pendiente", "extraido", "parcial", "error"],
+      enum: ["pendiente", "procesando", "extraido", "parcial", "error"],
       default: "extraido",
       required: true,
     },

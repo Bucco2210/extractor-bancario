@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { ejecutarConPool, partirEnChunks } from "../app/lib/openai";
+import {
+  definirChunks,
+  ejecutarConPool,
+  partirEnChunks,
+} from "../app/lib/openai";
 
 describe("partirEnChunks", () => {
   it("agrupa páginas en bloques del tamaño dado", () => {
@@ -26,6 +30,27 @@ describe("partirEnChunks", () => {
   it("un solo chunk cuando el total cabe", () => {
     const paginas = [1, 2, 3].map((n) => ({ numero: n, texto: "x" }));
     expect(partirEnChunks(paginas, 10)).toHaveLength(1);
+  });
+});
+
+describe("definirChunks", () => {
+  it("numera los chunks empezando en 0 y respeta el orden de páginas", () => {
+    const paginas = [1, 2, 3, 4, 5].map((n) => ({ numero: n, texto: `p${n}` }));
+    const chunks = definirChunks(paginas, 2);
+    expect(chunks).toHaveLength(3);
+    expect(chunks[0]).toEqual({
+      indice: 0,
+      paginas: [
+        { numero: 1, texto: "p1" },
+        { numero: 2, texto: "p2" },
+      ],
+    });
+    expect(chunks[2]?.indice).toBe(2);
+    expect(chunks[2]?.paginas).toEqual([{ numero: 5, texto: "p5" }]);
+  });
+
+  it("devuelve [] sin páginas", () => {
+    expect(definirChunks([], 6)).toEqual([]);
   });
 });
 

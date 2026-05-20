@@ -3,12 +3,13 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { conectarMongoose } from "@/lib/mongo";
 import { extraerTextoPdf, tieneTextoSuficiente } from "@/lib/pdf";
-import { extraerMovimientosDeChunks } from "@/lib/openai";
+import { definirChunks } from "@/lib/openai";
 import { getBlobStorage } from "@/lib/blob";
 import { Extraccion } from "@/models/Extraccion";
 import { AppError, respuestaError } from "@/lib/errors";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { correrExtraccion } from "@/lib/extraccion-runner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,20 +51,19 @@ export async function POST(req: Request): Promise<NextResponse> {
         `Tipo de archivo no permitido: ${archivo.type || "(desconocido)"}`,
       );
     }
-
-    const t0 = Date.now();
-    const buffer = Buffer.from(await archivo.arrayBuffer());
-    logger.info(
-      { archivo: archivo.name, tamanoKB: Math.round(archivo.size / 1024) },
-      "[1/5] archivo recibido",
-    );
-
     if (archivo.type !== "application/pdf") {
       throw new AppError(
         "NO_PROCESABLE",
         "Por ahora solo se procesan PDFs digitales en Fase 1.",
       );
     }
+
+    const t0 = Date.now();
+    const buffer = Buffer.from(await archivo.arrayBuffer());
+    logger.info(
+      { archivo: archivo.name, tamanoKB: Math.round(archivo.size / 1024) },
+      "[1/4] archivo recibido",
+    );
 
     const tPdf = Date.now();
     const textoPdf = await extraerTextoPdf(buffer);
@@ -73,7 +73,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         chars: textoPdf.textoCompleto.length,
         ms: Date.now() - tPdf,
       },
-      "[2/5] PDF parseado",
+      "[2/4] PDF parseado",
     );
     if (!tieneTextoSuficiente(textoPdf)) {
       throw new AppError(
@@ -88,82 +88,25 @@ export async function POST(req: Request): Promise<NextResponse> {
       contentType: archivo.type,
       data: buffer,
     });
-    logger.info({ ms: Date.now() - tBlob }, "[3/5] blob guardado");
+    logger.info({ ms: Date.now() - tBlob }, "[3/4] blob guardado");
 
-    const tIA = Date.now();
-    logger.info(
-      {
-        modelo: env.OPENAI_MODEL_DEFAULT,
-        paginas: textoPdf.totalPaginas,
-        paginasPorChunk: env.EXTRACCION_PAGINAS_POR_CHUNK,
-        concurrencia: env.EXTRACCION_CHUNKS_PARALELO,
-      },
-      "[4/5] llamando OpenAI por chunks…",
-    );
-
-    const { resultado, meta: metaExtraccion } = await extraerMovimientosDeChunks({
-      paginas: textoPdf.paginas,
-      banco: meta.data.banco,
-      onChunkProgreso: (info) => {
-        if (info.ok) {
-          logger.info(
-            {
-              chunk: `${info.indice + 1}/${info.total}`,
-              paginas: info.paginas,
-              ms: info.ms,
-              movimientos: info.movimientos ?? 0,
-            },
-            "chunk ok",
-          );
-        } else {
-          logger.warn(
-            {
-              chunk: `${info.indice + 1}/${info.total}`,
-              paginas: info.paginas,
-              ms: info.ms,
-              error: info.error,
-            },
-            "chunk falló",
-          );
-        }
-      },
-    });
-
-    logger.info(
-      {
-        ms: Date.now() - tIA,
-        chunksOk: metaExtraccion.chunksOk,
-        chunksTotal: metaExtraccion.chunksTotal,
-        chunksFallidos: metaExtraccion.chunksFallidos.length,
-        movimientos: resultado.movimientos.length,
-        tokens: metaExtraccion.tokensInput + metaExtraccion.tokensOutput,
-      },
-      "[4/5] OpenAI terminó",
-    );
-
-    if (metaExtraccion.chunksTotal === 0 || metaExtraccion.chunksOk === 0) {
+    const chunks = definirChunks(textoPdf.paginas, env.EXTRACCION_PAGINAS_POR_CHUNK);
+    if (chunks.length === 0) {
       throw new AppError(
         "NO_PROCESABLE",
-        metaExtraccion.chunksFallidos[0]?.error ??
-          "No se pudo extraer ningún chunk del documento.",
-        { chunksFallidos: metaExtraccion.chunksFallidos },
+        "El PDF no produjo páginas con texto procesable.",
       );
     }
 
-    const estado: "extraido" | "parcial" =
-      metaExtraccion.chunksFallidos.length === 0 ? "extraido" : "parcial";
-
-    const tDb = Date.now();
     await conectarMongoose();
-    logger.info({ ms: Date.now() - tDb }, "[5/5] mongo conectado");
     const doc = await Extraccion.create({
       usuarioId: session.user.id,
       banco: meta.data.banco ?? null,
-      cuenta: resultado.cuenta,
-      periodo: resultado.periodo,
-      titular: resultado.titular,
-      estado,
-      movimientos: resultado.movimientos,
+      cuenta: null,
+      periodo: null,
+      titular: null,
+      estado: "procesando",
+      movimientos: [],
       archivo: {
         nombre: archivo.name,
         tamano: archivo.size,
@@ -171,31 +114,48 @@ export async function POST(req: Request): Promise<NextResponse> {
         blobKey: blob.key,
         blobUrl: blob.url,
       },
-      _meta: metaExtraccion,
+      _meta: {
+        modelo: env.OPENAI_MODEL_DEFAULT,
+        tokensInput: 0,
+        tokensOutput: 0,
+        tiempoMs: 0,
+        paginasTotal: textoPdf.totalPaginas,
+        chunksTotal: chunks.length,
+        chunksOk: 0,
+        chunksFallidos: [],
+        chunksDefinicion: chunks.map((c) => ({
+          indice: c.indice,
+          paginas: c.paginas.map((p) => p.numero),
+        })),
+        chunksCompletados: [],
+      },
     });
 
     logger.info(
       {
         extraccionId: String(doc._id),
-        estado,
-        movimientos: resultado.movimientos.length,
-        tokens: metaExtraccion.tokensInput + metaExtraccion.tokensOutput,
-        totalMs: Date.now() - t0,
+        paginas: textoPdf.totalPaginas,
+        chunks: chunks.length,
+        msHastaResponse: Date.now() - t0,
       },
-      "Extracción completada",
+      "[4/4] doc creado, lanzando runner en background",
     );
+
+    void correrExtraccion({
+      extraccionId: String(doc._id),
+      chunks,
+      banco: meta.data.banco ?? null,
+      motivo: "inicial",
+    });
 
     return NextResponse.json(
       {
         id: String(doc._id),
-        estado,
-        cuenta: resultado.cuenta,
-        periodo: resultado.periodo,
-        titular: resultado.titular,
-        movimientos: resultado.movimientos,
-        _meta: metaExtraccion,
+        estado: "procesando" as const,
+        paginasTotal: textoPdf.totalPaginas,
+        chunksTotal: chunks.length,
       },
-      { status: 201 },
+      { status: 202 },
     );
   } catch (err) {
     logger.error({ err }, "Error en POST /api/extracciones");
