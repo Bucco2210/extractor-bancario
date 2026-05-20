@@ -15,7 +15,7 @@ export async function exportarMovimientosExcel(
   datos: DatosExportacion,
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "ETHOS Extractor Bancario";
+  wb.creator = "B&B Tech";
   wb.created = new Date();
 
   const sheet = wb.addWorksheet("Movimientos", {

@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ETHOS Extractor Bancario",
+  title: "B&B Tech",
   description:
-    "Importación, extracción con IA, conciliación y exportación de extractos bancarios para ETHOS Gestión Contable.",
+    "B&B Tech — importación, extracción con IA, conciliación y exportación de extractos bancarios para ETHOS Gestión Contable.",
 };
 
 export default function RootLayout({

@@ -1,10 +1,10 @@
-# CLAUDE.md — ETHOS Extractor Bancario
+# CLAUDE.md — B&B Tech (extractor bancario)
 
 > Instrucciones operativas para Claude Code en este repositorio. La especificación funcional completa vive en `prompt-claude-code-extractos-bancarios-v4.md` y el plan resumido en `README.md`.
 
 ## Descripción del proyecto
 
-Sistema multiusuario para ETHOS Gestión Contable que **importa, extrae con IA, concilia y exporta** extractos bancarios y de billeteras virtuales (Mercado Pago, Ualá, Naranja X, Cuenta DNI, Personal Pay, etc.). Aplicación full-stack Next.js desplegada en Vercel.
+**B&B Tech** es un sistema multiusuario para ETHOS Gestión Contable que **importa, extrae con IA, concilia y exporta** extractos bancarios y de billeteras virtuales (Mercado Pago, Ualá, Naranja X, Cuenta DNI, Personal Pay, etc.). Aplicación full-stack Next.js.
 
 ## Stack tecnológico
 

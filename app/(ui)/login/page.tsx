@@ -42,9 +42,9 @@ export default async function LoginPage({
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 py-12">
       <Card>
         <CardHeader>
-          <CardTitle>Iniciar sesión</CardTitle>
+          <CardTitle>Iniciar sesión en B&amp;B Tech</CardTitle>
           <CardDescription>
-            Ingresá con tu cuenta de ETHOS para extraer extractos.
+            Ingresá con tu cuenta para extraer extractos bancarios.
           </CardDescription>
         </CardHeader>
         <CardContent>

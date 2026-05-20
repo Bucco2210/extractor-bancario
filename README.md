@@ -1,6 +1,6 @@
-# ETHOS Extractor Bancario
+# B&B Tech
 
-Sistema multiusuario de **importación, extracción inteligente, conciliación y exportación** de extractos bancarios y de billeteras virtuales (Mercado Pago, Ualá, Naranja X, Cuenta DNI, Personal Pay, etc.) para ETHOS Gestión Contable.
+Sistema multiusuario de **importación, extracción inteligente, conciliación y exportación** de extractos bancarios y de billeteras virtuales (Mercado Pago, Ualá, Naranja X, Cuenta DNI, Personal Pay, etc.) construido para ETHOS Gestión Contable.
 
 Aplicación full-stack Next.js desplegada en Vercel, con MongoDB Atlas como base de datos y OpenAI como motor de extracción.
 
@@ -43,7 +43,7 @@ Una vez subido un archivo, se abre como pestaña tipo navegador en `/workspace`.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ ETHOS Extractor                          [👤 Seba] [⚙] [🌙] [👁‍🗨] │
+│ B&B Tech                                 [👤 Seba] [⚙] [🌙] [👁‍🗨] │
 ├────────┬───────────────────────────────────────────────────────────┤
 │ 🏠 Home│                                                           │
 │ 📊 Dash│   Importar nuevo extracto                                 │
@@ -172,7 +172,7 @@ AUTH_TRUST_HOST=true
 APP_ENCRYPTION_KEY=<openssl rand -hex 32>
 
 # === Aplicación ===
-APP_NAME=ETHOS Extractor Bancario
+APP_NAME=B&B Tech
 APP_ENV=development
 LOG_LEVEL=info
 MAX_FILE_SIZE_MB=25

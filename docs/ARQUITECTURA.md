@@ -1,4 +1,4 @@
-# Arquitectura — ETHOS Extractor Bancario
+# Arquitectura — B&B Tech
 
 > Estado: Fase 3 (Home con tabs de bancos, detector cableado al upload, vista de detalle provisoria). Las secciones marcadas como **pendiente** se completan en fases posteriores.
 

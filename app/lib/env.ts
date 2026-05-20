@@ -37,7 +37,7 @@ const envSchema = z.object({
     .regex(/^[0-9a-fA-F]{64}$/, "APP_ENCRYPTION_KEY debe ser 64 chars hex"),
 
   // Aplicación
-  APP_NAME: z.string().default("ETHOS Extractor Bancario"),
+  APP_NAME: z.string().default("B&B Tech"),
   APP_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
@@ -81,9 +81,9 @@ const envSchema = z.object({
   ALERTA_TOKENS_PORCENTAJE: z.coerce.number().int().min(1).max(100).default(80),
 
   // Seed admin
-  ADMIN_SEED_EMAIL: z.string().email().default("admin@ethos.local"),
+  ADMIN_SEED_EMAIL: z.string().email().default("admin@ethos.com"),
   ADMIN_SEED_PASSWORD: z.string().min(6).default("admin123"),
-  ADMIN_SEED_NOMBRE: z.string().default("Admin ETHOS"),
+  ADMIN_SEED_NOMBRE: z.string().default("Admin B&B Tech"),
 });
 
 type EnvRaw = z.infer<typeof envSchema>;
