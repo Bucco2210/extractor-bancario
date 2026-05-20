@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "seed:perfiles": "tsx scripts/seed-perfiles.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.7.5",

@@ -1,6 +1,6 @@
 # Arquitectura — ETHOS Extractor Bancario
 
-> Estado: Fase 1 (MVP local). Las secciones marcadas como **pendiente** se completan en fases posteriores.
+> Estado: Fase 2 (perfiles de extracción + detector). Las secciones marcadas como **pendiente** se completan en fases posteriores.
 
 ## Visión general
 
@@ -26,27 +26,40 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  app/components/...    → componentes (UploadExtracto, ui/) │
 ├────────────────────────────────────────────────────────────┤
 │ API Routes (Next.js, runtime nodejs)                       │
-│  POST /api/extracciones           → upload + extracción    │
-│  GET  /api/extracciones/[id]/excel → export XLSX           │
-│  /api/auth/[...nextauth]          → Auth.js handlers       │
+│  POST /api/extracciones                → upload + extracción│
+│  GET  /api/extracciones/[id]           → estado/polling     │
+│  POST /api/extracciones/[id]/reanudar  → reintentar chunks  │
+│  GET  /api/extracciones/[id]/excel     → export XLSX        │
+│  GET  /api/perfiles                    → list con filtros   │
+│  POST /api/perfiles                    → create (admin)     │
+│  GET  /api/perfiles/[id]               → detalle            │
+│  PATCH /api/perfiles/[id]              → update (admin)     │
+│  DELETE /api/perfiles/[id]             → soft delete (admin)│
+│  POST /api/perfiles/detectar           → detector con IA    │
+│  /api/auth/[...nextauth]               → Auth.js handlers   │
 ├────────────────────────────────────────────────────────────┤
 │ Middleware                                                 │
 │  middleware.ts → redirige a /login si no hay sesión        │
 ├────────────────────────────────────────────────────────────┤
 │ Lógica (app/lib)                                           │
-│  env.ts       → validación zod de env vars (cached)        │
-│  mongo.ts     → conexiones Mongoose y MongoClient cacheadas│
-│  auth.ts      → NextAuth v5 + adapter Mongo + credentials  │
-│  openai.ts    → cliente OpenAI + extracción + parser       │
-│  pdf.ts       → extracción de texto con pdfjs legacy       │
-│  blob.ts      → abstracción de storage (impl en memoria)   │
-│  excel.ts     → export XLSX con exceljs                    │
-│  password.ts  → bcrypt hash/verify                         │
-│  logger.ts    → pino                                       │
-│  errors.ts    → AppError + respuestaError(NextResponse)    │
+│  env.ts            → validación zod de env vars (cached)   │
+│  mongo.ts          → Mongoose + MongoClient cacheados      │
+│  auth.ts           → NextAuth v5 + adapter Mongo           │
+│  permisos.ts       → requerirSesion / requerirRol          │
+│  openai.ts         → cliente OpenAI + extracción + parser  │
+│  detector-perfil.ts→ detector de perfil (IA + parser)      │
+│  perfiles-schema.ts→ zod schemas perfiles CRUD             │
+│  perfiles-serializer.ts → DTO de PerfilExtraccion          │
+│  seeds/perfiles.ts → catálogo seed (17 entidades)          │
+│  pdf.ts            → extracción de texto con pdfjs legacy  │
+│  blob.ts           → abstracción de storage (memoria)      │
+│  excel.ts          → export XLSX con exceljs               │
+│  password.ts       → bcrypt hash/verify                    │
+│  logger.ts         → pino                                  │
+│  errors.ts         → AppError + respuestaError             │
 ├────────────────────────────────────────────────────────────┤
 │ Modelos (app/models, Mongoose)                             │
-│  Usuario, PerfilExtraccion (stub), Extraccion              │
+│  Usuario, PerfilExtraccion, Extraccion                     │
 ├────────────────────────────────────────────────────────────┤
 │ Persistencia                                               │
 │  MongoDB local o Atlas (MONGODB_URI)                       │
@@ -82,9 +95,28 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 | `archivo` | `{nombre, tamano, contentType, blobKey, blobUrl}` | |
 | `_meta` | `{modelo, tokensInput, tokensOutput, tiempoMs, chunksTotal, chunksOk, chunksFallidos[]}` | |
 
-### `perfilesExtraccion` (stub Fase 1)
+### `perfilesExtraccion` (Fase 2)
 
-Solo `slug`, `nombre`, `categoria`, `producto`, `promptSistema`, `activo`. Se expande en Fase 2.
+| Campo | Tipo | Notas |
+|---|---|---|
+| `slug` | string único | `^[a-z0-9_]+$`, ej. `galicia_extracto_ars` |
+| `entidad.slug` | string | clave de la entidad madre (banco/billetera) |
+| `entidad.nombre` | string | display ("Banco Galicia") |
+| `entidad.iconoUrl` | string \| null | reservado para Fase 3 |
+| `categoria` | `"banco" \| "billetera"` | tab de capa 1 en el Home |
+| `nombre` | string | display del perfil ("Extracto CA ARS") |
+| `tipoDocumento` | `"extracto_bancario" \| "tarjeta_credito" \| "tarjeta_debito"` | |
+| `monedaPrimaria` | `"ARS" \| "USD"` | |
+| `promptSistema` | string | prompt específico del perfil (vacío por default) |
+| `huella.palabrasClave` | string[] | input del detector |
+| `validacionesEspeciales` | `{tipo, valor, descripcion}[]` | validaciones declarativas |
+| `ordenEnGrid` | number | orden visual |
+| `activo` | boolean | soft delete |
+
+Catálogo inicial (12 bancos + 5 billeteras) en `app/lib/seeds/perfiles.ts`. Se carga
+con `npm run seed:perfiles` — el script es idempotente (upsert por slug). Ver
+[docs/PERFILES_EXTRACCION.md](./PERFILES_EXTRACCION.md) para el listado completo
+y cómo agregar más.
 
 ---
 
@@ -150,10 +182,43 @@ Fase 4: Zustand store del workspace con `persist`.
 
 ---
 
+## Detector de perfil (Fase 2)
+
+`POST /api/perfiles/detectar` recibe un texto (típicamente el primer
+chunk del PDF) y devuelve los top-N perfiles más probables con un score
+entre 0 y 1. La lista de candidatos se arma desde los perfiles activos en
+Mongo, pasándole al modelo el `slug`, la entidad, la categoría y las
+`huella.palabrasClave` de cada uno.
+
+```
+Cliente
+  │  POST /api/perfiles/detectar  { texto, topN? }
+  ▼
+- requerirSesion()
+- PerfilExtraccion.find({ activo: true })   ← arma candidatos
+- detectarPerfil({ texto, candidatos })
+    │
+    ├─ OpenAI chat.completions con response_format json_object
+    └─ parsearRespuestaDetector(raw, candidatos)
+         ↳ descarta slugs alucinados (matching contra la lista)
+         ↳ ordena por score descendente
+  │
+  ▼
+{ mejor: {perfilId, slug, score, razones} | null,
+  candidatos: [...top-N],
+  _meta: { modelo, tokensInput, tokensOutput, tiempoMs, totalCandidatos } }
+```
+
+En Fase 2 el detector solo se expone como endpoint independiente —
+no se cabla todavía al POST de extracción. Esa integración (auto-detección
+sobre el primer chunk y redirect al workspace si `score >= 0.85`) es de
+Fase 3 (DropzoneRapido).
+
+---
+
 ## Pendientes para fases siguientes
 
-- **Fase 2**: prompts por perfil + 17 seeds + detector de perfil.
-- **Fase 3**: Home con tabs de bancos, sub-tabs por producto, favoritos.
+- **Fase 3**: Home con tabs de bancos, sub-tabs por producto, favoritos, cableado del detector al upload.
 - **Fase 4**: workspace con pestañas tipo navegador.
 - **Fase 5**: aprendizaje de formato + reglas determinísticas.
 - **Fase 6**: conciliación con segunda fuente.
