@@ -14,7 +14,7 @@
 - **MongoDB Atlas + Mongoose** (conexión cacheada para serverless)
 - **Vercel Blob** para archivos originales
 - **OpenAI SDK** (`gpt-4o-mini` default, `gpt-4o` fallback) — **no usamos Anthropic en este proyecto**
-- **`pdfjs-dist` legacy + `pdf-lib`**, OCR vía OpenAI vision
+- **`pdfjs-dist` legacy + `pdf-lib`** (PDFs digitales únicamente — OCR/vision queda fuera del scope)
 - **`exceljs`** para exportación
 - **Auth.js v5** con adapter Mongo, roles `admin` / `operador`
 - **Inngest** para jobs largos
@@ -98,7 +98,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 4. **Workspace con pestañas** — `/workspace`, Zustand persist, sincronización a Mongo, atajos.
 5. **Aprendizaje** — huella, reglas determinísticas, UI `/formatos`.
 6. **Conciliación** — segunda fuente, matcheo con tolerancias, doble panel.
-7. **Robustez** — OCR vision, Inngest, encriptación, tests ≥ 70%.
+7. **Robustez** — Inngest, encriptación, tests ≥ 70%. (OCR/vision para PDFs escaneados queda fuera del scope.)
 8. **Pulido** — dashboard KPIs, modo oscuro, docs finales.
 
 ## Reglas operativas
@@ -144,7 +144,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5 y 6 cerradas. Próxima: Fase 7 (OCR vision, Inngest, encriptación, cobertura ≥ 70%).**
+**Fases 1, 2, 3, 4, 5 y 6 cerradas. Próxima: Fase 7 (Inngest, encriptación, cobertura ≥ 70%). OCR/vision queda fuera del scope.**
 
 - **Fase 1 — MVP local**: Next.js 16 + Mongo + Auth.js + OpenAI. Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación. Endpoints: `POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`, `GET /api/extracciones/:id/excel`.
 - **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar`.

@@ -16,7 +16,7 @@ Aplicación full-stack Next.js desplegada en Vercel, con MongoDB Atlas como base
 - **Base de datos**: MongoDB Atlas + Mongoose (conexión cacheada para serverless)
 - **Storage de archivos**: Vercel Blob
 - **IA**: OpenAI SDK — `gpt-4o-mini` por defecto, `gpt-4o` como fallback
-- **PDF**: `pdfjs-dist` legacy + `pdf-lib`; OCR vía OpenAI vision
+- **PDF**: `pdfjs-dist` legacy + `pdf-lib` (PDFs digitales — OCR/vision queda fuera del scope del proyecto)
 - **Excel**: `exceljs`
 - **Auth**: Auth.js v5 con adapter Mongo, roles `admin` / `operador`
 - **Jobs largos**: Inngest
@@ -156,10 +156,10 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - 28 tests nuevos (parser + matcheador + cálculo de estadísticas con grupos).
 
 ### Fase 7 — Robustez
-- OCR vía OpenAI vision para PDFs escaneados.
 - Inngest para jobs largos.
 - Encriptación de campos sensibles con `APP_ENCRYPTION_KEY`.
 - Tests con cobertura ≥ 70%.
+- **OCR/vision para PDFs escaneados queda explícitamente fuera del scope** — solo soportamos PDFs digitales (texto extraíble).
 
 ### Fase 8 — Pulido
 - Dashboard con KPIs (cantidad de extracciones, tokens consumidos, errores).
@@ -272,7 +272,7 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5 y 6 cerradas.** Próximo paso: Fase 7 (OCR vision, Inngest, encriptación, cobertura ≥ 70%).
+**Fases 1, 2, 3, 4, 5 y 6 cerradas.** Próximo paso: Fase 7 (Inngest, encriptación, cobertura ≥ 70%). OCR/vision queda fuera del scope.
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
