@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { BarraProgresoLudica } from "./BarraProgresoLudica";
 
 export type Movimiento = {
   fecha: string;
@@ -172,6 +173,9 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
     );
   }
 
+  const puedeExportar =
+    estado.estado === "extraido" || estado.estado === "parcial";
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -182,13 +186,13 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
           <ArrowLeft className="h-4 w-4" />
           Volver al inicio
         </Link>
-        {estado.estado === "extraido" || estado.estado === "parcial" ? (
+        {puedeExportar ? (
           <a
             href={`/api/extracciones/${estado.id}/excel`}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
+            className={buttonVariants({ variant: "default" })}
           >
             <Download className="mr-2 h-4 w-4" />
-            Exportar Excel
+            Exportar a Excel
           </a>
         ) : null}
       </div>
@@ -208,7 +212,7 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
       </header>
 
       {estado.estado === "procesando" ? (
-        <BarraProgreso
+        <BarraProgresoLudica
           chunksOk={estado._meta.chunksOk}
           chunksTotal={estado._meta.chunksTotal}
           paginasTotal={estado._meta.paginasTotal}
@@ -334,47 +338,30 @@ export function VistaEstadoExtraccion({ id }: { id: string }) {
           </tbody>
         </table>
       </div>
+
+      {puedeExportar && estado.movimientos.length > 0 ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-4">
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium">
+              {estado.movimientos.length}{" "}
+              {estado.movimientos.length === 1 ? "movimiento listo" : "movimientos listos"}{" "}
+              para exportar
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Generamos un Excel con cuenta, período, titular y la tabla
+              completa.
+            </p>
+          </div>
+          <a
+            href={`/api/extracciones/${estado.id}/excel`}
+            className={buttonVariants({ variant: "default" })}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Exportar a Excel
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function BarraProgreso({
-  chunksOk,
-  chunksTotal,
-  paginasTotal,
-}: {
-  chunksOk: number;
-  chunksTotal: number;
-  paginasTotal: number;
-}) {
-  const porcentaje =
-    chunksTotal > 0 ? Math.min(100, Math.round((chunksOk / chunksTotal) * 100)) : 0;
-  return (
-    <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-4">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="font-medium">Procesando extracción…</span>
-        </div>
-        <span className="tabular-nums text-muted-foreground">
-          {chunksOk}/{chunksTotal} bloques · {paginasTotal} páginas
-        </span>
-      </div>
-      <div
-        className="h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={porcentaje}
-      >
-        <div
-          className="h-full bg-primary transition-all duration-300"
-          style={{ width: `${porcentaje}%` }}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {porcentaje}% — los movimientos aparecen abajo a medida que se procesan.
-      </p>
-    </div>
-  );
-}
