@@ -10,9 +10,12 @@ export default async function UiLayout({
   const session = await auth();
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b">
+      <header className="border-b border-white/40 bg-white/60 backdrop-blur-sm dark:border-white/10 dark:bg-black/30">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <Link href="/" className="font-semibold tracking-tight">
+          <Link
+            href="/"
+            className="text-lg font-extrabold tracking-tight text-sky-700 dark:text-sky-300"
+          >
             B&amp;B Tech
           </Link>
           {session?.user ? (
