@@ -4,7 +4,7 @@ Sistema multiusuario de **importación, extracción inteligente, conciliación y
 
 Aplicación full-stack Next.js desplegada en Vercel, con MongoDB Atlas como base de datos y OpenAI como motor de extracción.
 
-> Este repositorio está en **reescritura completa** desde una versión previa en Express + HTML vanilla. La especificación oficial es el documento `prompt-claude-code-extractos-bancarios-v4.md`. Este README refleja el plan acordado antes de iniciar la Fase 1.
+> La especificación oficial es el documento `prompt-claude-code-extractos-bancarios-v4.md`. Este README resume el plan y refleja el estado actual del trabajo. Durante esta etapa de desarrollo el deploy a Vercel está pausado — todo se valida local con `npm run test/lint/build`.
 
 ---
 
@@ -90,24 +90,24 @@ Una vez subido un archivo, se abre como pestaña tipo navegador en `/workspace`.
 
 Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verificación de deploy a Vercel.
 
-### Fase 1 — Setup y MVP
-- `create-next-app` + Tailwind + shadcn.
-- `.env.example` con validación zod en `app/lib/env.ts`.
+### ✅ Fase 1 — Setup y MVP (cerrada)
+- Next.js 16 + Tailwind v4 + shadcn/ui (base-nova).
+- `.env.example` + validación zod en `app/lib/env.ts`.
 - Conexión MongoDB cacheada para serverless.
 - Auth.js v5 con login básico (rol `admin` / `operador`).
-- Endpoint upload a Vercel Blob + extracción OpenAI mínima.
-- Export Excel mínimo con `exceljs`.
-- Deploy a Vercel funcionando.
+- Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación de chunks fallidos (`POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`).
+- Export Excel mínimo con `exceljs` (`GET /api/extracciones/:id/excel`).
+- Deploy a Vercel **pausado por decisión del usuario** — validación local con tests + lint + typecheck + build.
 
-### Fase 2 — Perfiles de extracción
-- Modelo `PerfilExtraccion` en Mongo.
-- 17 perfiles seed iniciales (bancos argentinos + billeteras).
-- Endpoints CRUD `/api/perfiles/*`.
-- Detector de perfil con OpenAI (texto extraído → perfil con score de confianza).
+### ✅ Fase 2 — Perfiles de extracción (cerrada)
+- Modelo `PerfilExtraccion` con entidad embebida, `categoria` (`banco`/`billetera`), `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`), `monedaPrimaria` (`ARS`/`USD`), huella para detector y validaciones declarativas.
+- 17 entidades seed (12 bancos + 5 billeteras), cada una con un perfil base de `extracto_bancario / ARS`. Script idempotente `npm run seed:perfiles`.
+- Endpoints CRUD `/api/perfiles/*` (lectura para sesión, escritura solo `admin`).
+- Detector con OpenAI: `POST /api/perfiles/detectar` devuelve top-N candidatos con score 0–1 y razones. Aún no cableado al upload (eso es Fase 3).
 
-### Fase 3 — Home con tabs de bancos
+### 🚧 Fase 3 — Home con tabs de bancos (en curso)
 - Ruta `/` con layout completo.
-- `DropzoneRapido` con auto-detección.
+- `DropzoneRapido` con auto-detección (cableando el detector de Fase 2 al upload).
 - Tabs de categoría + grid de cards de bancos.
 - Panel de producto (slide-over) con sub-tabs por producto.
 - Favoritos del usuario en `usuarios.preferencias.bancosFavoritos`.
@@ -207,23 +207,28 @@ Todas se validan con `zod` en `app/lib/env.ts` al arrancar el servidor.
 
 | Servicio | Estado | Acción |
 |----------|--------|--------|
-| OpenAI API | Disponible | Usar la API key existente |
-| MongoDB Atlas | Disponible | Confirmar cluster y connection string |
-| Vercel | Pendiente | Crear cuenta y proyecto al iniciar Fase 1 |
-| Vercel Blob | Pendiente | Generar token al crear el proyecto Vercel |
+| OpenAI API | En uso | Modelo default `gpt-4o-mini`, fallback `gpt-4o` |
+| MongoDB | En uso | Local en desarrollo; Atlas cuando se reactive Vercel |
+| Vercel | **Pausado** | Reactivar cuando el sistema esté más maduro |
+| Vercel Blob | **Pausado** | Storage local en memoria; reemplazar al volver a Vercel |
 | Inngest | Diferido | Necesario recién en Fase 7 |
 
 ---
 
-## Comandos (post Fase 1)
+## Comandos
 
 ```bash
 npm install
-npm run dev        # next dev
-npm run build      # next build
-npm run start      # next start
-npm run lint
-npm run test
+npm run dev               # next dev
+npm run build             # next build
+npm run start             # next start
+npm run lint              # eslint
+npm run typecheck         # tsc --noEmit
+npm run test              # vitest run
+npm run test:watch        # vitest --watch
+
+npm run seed:admin        # crea/actualiza usuario admin (de variables ADMIN_SEED_*)
+npm run seed:perfiles     # upsert idempotente del catálogo de 17 perfiles
 ```
 
 ---
@@ -241,4 +246,18 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Pendiente iniciar Fase 1.** El proyecto previo (Express + HTML vanilla + Anthropic) será eliminado al ejecutar `create-next-app`. La especificación completa vive en `prompt-claude-code-extractos-bancarios-v4.md`.
+**Fases 1 y 2 cerradas.** Fase 3 en curso (Home con tabs de bancos).
+
+| Fase | Estado | Resultado entregado |
+|---|---|---|
+| 1 — Setup y MVP | ✅ Cerrada | Upload + extracción async con chunking, persistencia incremental, reanudación, export XLSX, auth credentials. |
+| 2 — Perfiles de extracción | ✅ Cerrada | Modelo `PerfilExtraccion`, 17 seeds idempotentes, CRUD `/api/perfiles/*` con admin gate, detector `POST /api/perfiles/detectar`. |
+| 3 — Home con tabs de bancos | 🚧 En curso | Ruta `/`, DropzoneRapido, tabs, cards, panel de producto, favoritos, `/api/home/resumen`. |
+| 4–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
+
+Decisiones operativas vigentes:
+
+- **Deploy a Vercel pausado.** Iteramos solo local; los pasos de cierre de fase son tests + lint + typecheck + build local.
+- **Una fase por vez** con commit atómico al cierre. No mezclamos fases.
+- **Idioma del código y UI**: español (excepto convenciones de framework).
+- **Documentación viva** en `docs/` se mantiene al día junto con el código.

@@ -144,4 +144,12 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 
 ## Estado actual
 
-Repositorio en transición desde una implementación previa (Express + HTML vanilla + Anthropic). El código legacy se elimina al iniciar Fase 1 con `create-next-app`. La especificación completa vive en `prompt-claude-code-extractos-bancarios-v4.md`.
+**Fases 1 y 2 cerradas. Fase 3 en curso.**
+
+- **Fase 1 — MVP local**: Next.js 16 + Mongo + Auth.js + OpenAI. Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación. Endpoints: `POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`, `GET /api/extracciones/:id/excel`.
+- **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar` — aún no cableado al upload (es de Fase 3).
+- **Fase 3 — Home**: ruta `/`, DropzoneRapido con detector cableado, tabs de categoría, grid de cards, panel de producto slide-over, favoritos del usuario, carrusel últimos, `GET /api/home/resumen`.
+
+**Decisión vigente**: deploy a Vercel pausado, todo local. Verificación de cierre de fase = tests + lint + typecheck + build local (sin `git push` ni Vercel).
+
+La especificación completa vive en `prompt-claude-code-extractos-bancarios-v4.md` y el plan resumido en `README.md`.
