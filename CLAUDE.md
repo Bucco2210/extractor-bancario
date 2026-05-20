@@ -144,11 +144,11 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 
 ## Estado actual
 
-**Fases 1 y 2 cerradas. Fase 3 en curso.**
+**Fases 1, 2 y 3 cerradas. Próxima: Fase 4 (workspace con pestañas).**
 
 - **Fase 1 — MVP local**: Next.js 16 + Mongo + Auth.js + OpenAI. Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación. Endpoints: `POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`, `GET /api/extracciones/:id/excel`.
-- **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar` — aún no cableado al upload (es de Fase 3).
-- **Fase 3 — Home**: ruta `/`, DropzoneRapido con detector cableado, tabs de categoría, grid de cards, panel de producto slide-over, favoritos del usuario, carrusel últimos, `GET /api/home/resumen`.
+- **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar`.
+- **Fase 3 — Home**: ruta `/` completa con DropzoneRapido + tabs (banco/billetera/tarjeta/favoritos) + grid de cards + slide-over PanelProducto + carrusel últimos. Detector cableado al `POST /api/extracciones` (umbral 0.85); cuando el score no alcanza se ofrece modal de confirmación manual. Favoritos en `usuarios.preferencias.bancosFavoritos` con endpoints `POST/DELETE /api/usuarios/favoritos`. Vista de detalle provisoria en `/extracciones/[id]` (polling) que reusará Fase 4 dentro de cada pestaña del workspace. `PATCH /api/extracciones/[id]` para asignar perfilId tras el hecho.
 
 **Decisión vigente**: deploy a Vercel pausado, todo local. Verificación de cierre de fase = tests + lint + typecheck + build local (sin `git push` ni Vercel).
 

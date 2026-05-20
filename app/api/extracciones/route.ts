@@ -1,23 +1,48 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import mongoose, { Types } from "mongoose";
 import { auth } from "@/lib/auth";
 import { conectarMongoose } from "@/lib/mongo";
 import { extraerTextoPdf, tieneTextoSuficiente } from "@/lib/pdf";
 import { definirChunks } from "@/lib/openai";
 import { getBlobStorage } from "@/lib/blob";
 import { Extraccion } from "@/models/Extraccion";
+import { PerfilExtraccion } from "@/models/PerfilExtraccion";
 import { AppError, respuestaError } from "@/lib/errors";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { correrExtraccion } from "@/lib/extraccion-runner";
+import {
+  detectarPerfil,
+  type CandidatoPerfil,
+  type Coincidencia,
+} from "@/lib/detector-perfil";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const UMBRAL_AUTO_DETECCION = 0.85;
+
 const formSchema = z.object({
   banco: z.string().trim().optional(),
+  perfilId: z
+    .string()
+    .trim()
+    .refine((v) => !v || mongoose.isValidObjectId(v), {
+      message: "perfilId no es un ObjectId válido",
+    })
+    .optional(),
 });
+
+type DeteccionResultado = {
+  mejor: Coincidencia | null;
+  candidatos: Coincidencia[];
+  modelo: string;
+  tokensInput: number;
+  tokensOutput: number;
+  tiempoMs: number;
+};
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
@@ -33,7 +58,10 @@ export async function POST(req: Request): Promise<NextResponse> {
       throw new AppError("INPUT_INVALIDO", "Falta el archivo a extraer (campo 'archivo').");
     }
 
-    const meta = formSchema.safeParse({ banco: formData.get("banco") ?? undefined });
+    const meta = formSchema.safeParse({
+      banco: formData.get("banco") ?? undefined,
+      perfilId: formData.get("perfilId") ?? undefined,
+    });
     if (!meta.success) {
       throw new AppError("INPUT_INVALIDO", "Parámetros inválidos.", meta.error.issues);
     }
@@ -62,7 +90,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const buffer = Buffer.from(await archivo.arrayBuffer());
     logger.info(
       { archivo: archivo.name, tamanoKB: Math.round(archivo.size / 1024) },
-      "[1/4] archivo recibido",
+      "[1/5] archivo recibido",
     );
 
     const tPdf = Date.now();
@@ -73,7 +101,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         chars: textoPdf.textoCompleto.length,
         ms: Date.now() - tPdf,
       },
-      "[2/4] PDF parseado",
+      "[2/5] PDF parseado",
     );
     if (!tieneTextoSuficiente(textoPdf)) {
       throw new AppError(
@@ -88,7 +116,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       contentType: archivo.type,
       data: buffer,
     });
-    logger.info({ ms: Date.now() - tBlob }, "[3/4] blob guardado");
+    logger.info({ ms: Date.now() - tBlob }, "[3/5] blob guardado");
 
     const chunks = definirChunks(textoPdf.paginas, env.EXTRACCION_PAGINAS_POR_CHUNK);
     if (chunks.length === 0) {
@@ -99,9 +127,54 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
 
     await conectarMongoose();
+
+    let perfilIdFinal: Types.ObjectId | null = null;
+    let bancoFinal: string | null = meta.data.banco ?? null;
+    let deteccion: DeteccionResultado | null = null;
+    let deteccionAuto = false;
+
+    if (meta.data.perfilId) {
+      const p = await PerfilExtraccion.findById(meta.data.perfilId)
+        .select({ _id: 1, entidad: 1, activo: 1 })
+        .lean();
+      if (!p) {
+        throw new AppError("NO_ENCONTRADO", "Perfil no encontrado.");
+      }
+      if (!p.activo) {
+        throw new AppError("NO_PROCESABLE", "El perfil seleccionado está inactivo.");
+      }
+      perfilIdFinal = p._id;
+      bancoFinal = bancoFinal ?? p.entidad.nombre;
+    } else if (!bancoFinal) {
+      const tDet = Date.now();
+      deteccion = await ejecutarDetector(textoPdf.textoCompleto);
+      logger.info(
+        {
+          ms: Date.now() - tDet,
+          mejorSlug: deteccion?.mejor?.slug ?? null,
+          mejorScore: deteccion?.mejor?.score ?? null,
+          umbral: UMBRAL_AUTO_DETECCION,
+        },
+        "[4/5] detector ejecutado",
+      );
+      if (
+        deteccion?.mejor &&
+        deteccion.mejor.score >= UMBRAL_AUTO_DETECCION &&
+        mongoose.isValidObjectId(deteccion.mejor.perfilId)
+      ) {
+        perfilIdFinal = new Types.ObjectId(deteccion.mejor.perfilId);
+        deteccionAuto = true;
+        const p = await PerfilExtraccion.findById(perfilIdFinal)
+          .select({ entidad: 1 })
+          .lean();
+        if (p) bancoFinal = p.entidad.nombre;
+      }
+    }
+
     const doc = await Extraccion.create({
       usuarioId: session.user.id,
-      banco: meta.data.banco ?? null,
+      perfilId: perfilIdFinal,
+      banco: bancoFinal,
       cuenta: null,
       periodo: null,
       titular: null,
@@ -116,8 +189,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       },
       _meta: {
         modelo: env.OPENAI_MODEL_DEFAULT,
-        tokensInput: 0,
-        tokensOutput: 0,
+        tokensInput: deteccion?.tokensInput ?? 0,
+        tokensOutput: deteccion?.tokensOutput ?? 0,
         tiempoMs: 0,
         paginasTotal: textoPdf.totalPaginas,
         chunksTotal: chunks.length,
@@ -134,17 +207,23 @@ export async function POST(req: Request): Promise<NextResponse> {
     logger.info(
       {
         extraccionId: String(doc._id),
+        perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
+        perfilOrigen: meta.data.perfilId
+          ? "usuario_eligio"
+          : deteccionAuto
+            ? "auto_detect"
+            : "sin_perfil",
         paginas: textoPdf.totalPaginas,
         chunks: chunks.length,
         msHastaResponse: Date.now() - t0,
       },
-      "[4/4] doc creado, lanzando runner en background",
+      "[5/5] doc creado, lanzando runner en background",
     );
 
     void correrExtraccion({
       extraccionId: String(doc._id),
       chunks,
-      banco: meta.data.banco ?? null,
+      banco: bancoFinal,
       motivo: "inicial",
     });
 
@@ -154,11 +233,62 @@ export async function POST(req: Request): Promise<NextResponse> {
         estado: "procesando" as const,
         paginasTotal: textoPdf.totalPaginas,
         chunksTotal: chunks.length,
+        perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
+        deteccion: deteccion
+          ? {
+              mejor: deteccion.mejor,
+              candidatos: deteccion.candidatos,
+              umbral: UMBRAL_AUTO_DETECCION,
+              auto: deteccionAuto,
+            }
+          : null,
       },
       { status: 202 },
     );
   } catch (err) {
     logger.error({ err }, "Error en POST /api/extracciones");
     return respuestaError(err);
+  }
+}
+
+async function ejecutarDetector(
+  textoCompleto: string,
+): Promise<DeteccionResultado | null> {
+  const docs = await PerfilExtraccion.find({ activo: true })
+    .select({
+      _id: 1,
+      slug: 1,
+      entidad: 1,
+      nombre: 1,
+      categoria: 1,
+      tipoDocumento: 1,
+      monedaPrimaria: 1,
+      huella: 1,
+    })
+    .lean();
+  if (docs.length === 0) return null;
+
+  const candidatos: CandidatoPerfil[] = docs.map((d) => ({
+    id: String(d._id),
+    slug: d.slug,
+    nombreEntidad: d.entidad.nombre,
+    nombre: d.nombre,
+    categoria: d.categoria,
+    tipoDocumento: d.tipoDocumento,
+    monedaPrimaria: d.monedaPrimaria,
+    palabrasClave: d.huella?.palabrasClave ?? [],
+  }));
+
+  try {
+    return await detectarPerfil({
+      texto: textoCompleto,
+      candidatos,
+    });
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "detector falló — la extracción sigue sin perfilId",
+    );
+    return null;
   }
 }

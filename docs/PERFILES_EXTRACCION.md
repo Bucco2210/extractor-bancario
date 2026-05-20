@@ -124,9 +124,16 @@ Respuesta:
 }
 ```
 
-Umbral sugerido para auto-asignar perfil: `score >= 0.85` (definido en la
-spec §5.3). Si está debajo, la UI debería pedir confirmación manual al
-usuario. Este cableado vive en Fase 3 (DropzoneRapido).
+Umbral para auto-asignar perfil: `score >= 0.85` (constante
+`UMBRAL_AUTO_DETECCION` en `app/api/extracciones/route.ts`, alineado con
+spec §5.3).
+
+Desde Fase 3 el detector **también corre internamente** en
+`POST /api/extracciones` cuando no viene `perfilId` ni `banco`. La
+respuesta incluye un campo `deteccion` con `mejor`, `candidatos` y el
+flag `auto` (true si se asignó perfil automáticamente). Cuando el
+score no alcanza el umbral, la Home muestra un modal con los candidatos
+para confirmar manualmente (ver [docs/HOME_UX.md](./HOME_UX.md)).
 
 ## Endpoints CRUD
 

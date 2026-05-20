@@ -1,6 +1,6 @@
 # Arquitectura — ETHOS Extractor Bancario
 
-> Estado: Fase 2 (perfiles de extracción + detector). Las secciones marcadas como **pendiente** se completan en fases posteriores.
+> Estado: Fase 3 (Home con tabs de bancos, detector cableado al upload, vista de detalle provisoria). Las secciones marcadas como **pendiente** se completan en fases posteriores.
 
 ## Visión general
 
@@ -21,13 +21,17 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ UI (React 19 + Tailwind v4 + shadcn/ui base-nova)          │
-│  app/(ui)/page.tsx     → Home (upload)                     │
-│  app/(ui)/login/...    → Login con Auth.js v5              │
-│  app/components/...    → componentes (UploadExtracto, ui/) │
+│  app/(ui)/page.tsx           → Home (tabs + grid + carrusel)│
+│  app/(ui)/extracciones/[id]  → vista de detalle/polling     │
+│  app/(ui)/login/...          → Login con Auth.js v5         │
+│  app/components/home/...     → Home, dropzone, tabs, panel  │
+│  app/components/extracciones → EstadoExtraccion (polling)   │
+│  app/components/ui/...       → shadcn primitives            │
 ├────────────────────────────────────────────────────────────┤
 │ API Routes (Next.js, runtime nodejs)                       │
-│  POST /api/extracciones                → upload + extracción│
+│  POST /api/extracciones                → upload + detector  │
 │  GET  /api/extracciones/[id]           → estado/polling     │
+│  PATCH /api/extracciones/[id]          → asignar perfilId   │
 │  POST /api/extracciones/[id]/reanudar  → reintentar chunks  │
 │  GET  /api/extracciones/[id]/excel     → export XLSX        │
 │  GET  /api/perfiles                    → list con filtros   │
@@ -35,28 +39,34 @@ En Fase 1 todo corre local. La integración con Vercel + Vercel Blob queda para 
 │  GET  /api/perfiles/[id]               → detalle            │
 │  PATCH /api/perfiles/[id]              → update (admin)     │
 │  DELETE /api/perfiles/[id]             → soft delete (admin)│
-│  POST /api/perfiles/detectar           → detector con IA    │
+│  POST /api/perfiles/detectar           → detector standalone│
+│  GET  /api/home/resumen                → bancos + últimos   │
+│  POST /api/usuarios/favoritos          → marcar favorito    │
+│  DELETE /api/usuarios/favoritos        → desmarcar          │
 │  /api/auth/[...nextauth]               → Auth.js handlers   │
 ├────────────────────────────────────────────────────────────┤
 │ Middleware                                                 │
 │  middleware.ts → redirige a /login si no hay sesión        │
 ├────────────────────────────────────────────────────────────┤
 │ Lógica (app/lib)                                           │
-│  env.ts            → validación zod de env vars (cached)   │
-│  mongo.ts          → Mongoose + MongoClient cacheados      │
-│  auth.ts           → NextAuth v5 + adapter Mongo           │
-│  permisos.ts       → requerirSesion / requerirRol          │
-│  openai.ts         → cliente OpenAI + extracción + parser  │
-│  detector-perfil.ts→ detector de perfil (IA + parser)      │
-│  perfiles-schema.ts→ zod schemas perfiles CRUD             │
+│  env.ts             → validación zod de env vars (cached)  │
+│  mongo.ts           → Mongoose + MongoClient cacheados     │
+│  auth.ts            → NextAuth v5 + adapter Mongo          │
+│  permisos.ts        → requerirSesion / requerirRol         │
+│  openai.ts          → cliente OpenAI + extracción + parser │
+│  detector-perfil.ts → detector de perfil (IA + parser)     │
+│  perfiles-schema.ts → zod schemas perfiles CRUD            │
 │  perfiles-serializer.ts → DTO de PerfilExtraccion          │
-│  seeds/perfiles.ts → catálogo seed (17 entidades)          │
-│  pdf.ts            → extracción de texto con pdfjs legacy  │
-│  blob.ts           → abstracción de storage (memoria)      │
-│  excel.ts          → export XLSX con exceljs               │
-│  password.ts       → bcrypt hash/verify                    │
-│  logger.ts         → pino                                  │
-│  errors.ts         → AppError + respuestaError             │
+│  home-resumen.ts    → armado del payload de /home/resumen  │
+│  home-tipos.ts      → tipos compartidos UI/server + filtros│
+│  colores-entidad.ts → paleta + iniciales para avatars      │
+│  seeds/perfiles.ts  → catálogo seed (17 entidades)         │
+│  pdf.ts             → extracción de texto con pdfjs legacy │
+│  blob.ts            → abstracción de storage (memoria)     │
+│  excel.ts           → export XLSX con exceljs              │
+│  password.ts        → bcrypt hash/verify                   │
+│  logger.ts          → pino                                 │
+│  errors.ts          → AppError + respuestaError            │
 ├────────────────────────────────────────────────────────────┤
 │ Modelos (app/models, Mongoose)                             │
 │  Usuario, PerfilExtraccion, Extraccion                     │
@@ -209,16 +219,47 @@ Cliente
   _meta: { modelo, tokensInput, tokensOutput, tiempoMs, totalCandidatos } }
 ```
 
-En Fase 2 el detector solo se expone como endpoint independiente —
-no se cabla todavía al POST de extracción. Esa integración (auto-detección
-sobre el primer chunk y redirect al workspace si `score >= 0.85`) es de
-Fase 3 (DropzoneRapido).
+Desde Fase 3 el detector también se invoca **internamente desde
+`POST /api/extracciones`** cuando el caller no pasó `perfilId`. Si
+`mejor.score >= UMBRAL_AUTO_DETECCION (0.85)`, el `perfilId` se fija
+antes de crear el documento. Si no, la extracción arranca igual con
+`perfilId: null` y el cliente decide si pedir confirmación manual al
+usuario (modal de detección dudosa en la Home).
+
+---
+
+## Home (Fase 3)
+
+La pantalla de inicio (`/`) reemplaza al upload simple de Fase 1. Detalle
+completo del comportamiento en [docs/HOME_UX.md](./HOME_UX.md). Resumen:
+
+- **`GET /api/home/resumen`** arma el payload combinando perfiles
+  activos (agrupados por `entidad.slug`), preferencias del usuario y
+  últimas N extracciones. La lógica pura está en
+  `app/lib/home-resumen.ts::armarHomeResumen` (testeada en
+  `tests/home-resumen.test.ts`).
+- **DropzoneRapido** sube el archivo sin `perfilId` y deja que el
+  backend corra el detector. La UI redirige a `/extracciones/[id]` si
+  hubo auto-detección, o abre un modal con los candidatos del detector
+  cuando el score no alcanza el umbral.
+- **Panel de Producto** (slide-over) ofrece dropzones por perfil de
+  cada entidad — esos uploads van con `perfilId` fijado y saltean el
+  detector.
+- **Favoritos** vive en `usuarios.preferencias.bancosFavoritos` como
+  array de `entidad.slug`. Toggle optimista con revert en falla.
+
+## Vista de detalle de extracción (Fase 3, provisoria)
+
+`/extracciones/[id]` renderiza `VistaEstadoExtraccion` (client component
+con polling cada 1.5s). Migrada del panel embebido en el upload de
+Fase 1; cuando llegue Fase 4 con `/workspace`, se reusa adentro de una
+pestaña.
 
 ---
 
 ## Pendientes para fases siguientes
 
-- **Fase 3**: Home con tabs de bancos, sub-tabs por producto, favoritos, cableado del detector al upload.
+- **Fase 4**: `/workspace` con pestañas tipo navegador, Zustand persist, sincronización con `usuarios.preferencias.pestañasAbiertas`.
 - **Fase 4**: workspace con pestañas tipo navegador.
 - **Fase 5**: aprendizaje de formato + reglas determinísticas.
 - **Fase 6**: conciliación con segunda fuente.

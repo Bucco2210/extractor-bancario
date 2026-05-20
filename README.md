@@ -105,14 +105,15 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Endpoints CRUD `/api/perfiles/*` (lectura para sesión, escritura solo `admin`).
 - Detector con OpenAI: `POST /api/perfiles/detectar` devuelve top-N candidatos con score 0–1 y razones. Aún no cableado al upload (eso es Fase 3).
 
-### 🚧 Fase 3 — Home con tabs de bancos (en curso)
-- Ruta `/` con layout completo.
-- `DropzoneRapido` con auto-detección (cableando el detector de Fase 2 al upload).
-- Tabs de categoría + grid de cards de bancos.
-- Panel de producto (slide-over) con sub-tabs por producto.
-- Favoritos del usuario en `usuarios.preferencias.bancosFavoritos`.
-- Carrusel de últimos extractos.
-- Endpoint `/api/home/resumen` (bancos destacados + favoritos + últimos).
+### ✅ Fase 3 — Home con tabs de bancos (cerrada)
+- Ruta `/` con layout completo: dropzone rápido + tabs de categoría + grid de cards + carrusel últimos.
+- DropzoneRapido con detector cableado al upload (`UMBRAL_AUTO_DETECCION = 0.85`).
+- Slide-over `PanelProducto` con sub-tabs por perfil; uploads desde ahí van con `perfilId` fijado.
+- Modal de detección dudosa cuando el score no alcanza el umbral: top-N candidatos + opción de saltar.
+- Favoritos en `usuarios.preferencias.bancosFavoritos` (POST/DELETE `/api/usuarios/favoritos`, toggle optimista).
+- Endpoint `GET /api/home/resumen` (lógica pura testeable en `app/lib/home-resumen.ts`).
+- Vista de detalle provisoria `/extracciones/[id]` con polling (se reusa en Fase 4 dentro del workspace).
+- Endpoint `PATCH /api/extracciones/[id]` para asignar `perfilId` tras el hecho (usado por el modal).
 
 ### Fase 4 — Workspace con pestañas
 - Zustand store del workspace + `persist`.
@@ -246,14 +247,15 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Fases 1 y 2 cerradas.** Fase 3 en curso (Home con tabs de bancos).
+**Fases 1, 2 y 3 cerradas.** Próximo paso: Fase 4 (workspace con pestañas).
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
 | 1 — Setup y MVP | ✅ Cerrada | Upload + extracción async con chunking, persistencia incremental, reanudación, export XLSX, auth credentials. |
 | 2 — Perfiles de extracción | ✅ Cerrada | Modelo `PerfilExtraccion`, 17 seeds idempotentes, CRUD `/api/perfiles/*` con admin gate, detector `POST /api/perfiles/detectar`. |
-| 3 — Home con tabs de bancos | 🚧 En curso | Ruta `/`, DropzoneRapido, tabs, cards, panel de producto, favoritos, `/api/home/resumen`. |
-| 4–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
+| 3 — Home con tabs de bancos | ✅ Cerrada | Home `/` completa con dropzone + tabs + grid + slide-over + carrusel, detector cableado al upload, favoritos, vista de detalle `/extracciones/[id]`. |
+| 4 — Workspace con pestañas | ⏳ Próxima | Zustand + persist, layout `/workspace`, sincronización a Mongo, atajos. |
+| 5–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
 
 Decisiones operativas vigentes:
 
