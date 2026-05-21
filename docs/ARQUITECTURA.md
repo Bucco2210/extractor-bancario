@@ -383,8 +383,9 @@ antes de correrlo en producción.
 
 ## Pendientes para fases siguientes
 
-- **Fase 7 (en curso)**: ✅ encriptación AES-GCM en reposo. Pendiente:
-  Inngest para jobs largos, cobertura de tests ≥ 70%.
+- **Fase 7 (en curso)**: ✅ encriptación AES-GCM en reposo, ✅ Inngest
+  para jobs durables (ver `docs/INNGEST.md`). Pendiente: cobertura
+  de tests ≥ 70%.
 - **Fase 8**: dashboard de KPIs, modo oscuro, documentación final.
 - **Fase 9 (nueva)**: monetización, planes Plus/Pro/Premium, panel
   admin, login con planes, integración Mercado Pago.

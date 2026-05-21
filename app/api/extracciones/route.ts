@@ -12,7 +12,7 @@ import { FormatoAprendido } from "@/models/FormatoAprendido";
 import { AppError, respuestaError } from "@/lib/errors";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { correrExtraccion } from "@/lib/extraccion-runner";
+import { dispararExtraccion } from "@/lib/inngest";
 import {
   detectarPerfil,
   type CandidatoPerfil,
@@ -348,17 +348,20 @@ export async function POST(req: Request): Promise<NextResponse> {
         huella,
         msHastaResponse: Date.now() - t0,
       },
-      "[5/5] doc creado, lanzando runner en background",
+      "[5/5] doc creado, lanzando job Inngest",
     );
 
-    void correrExtraccion({
+    await dispararExtraccion({
       extraccionId: String(doc._id),
-      chunks,
+      chunks: chunks.map((c) => ({
+        indice: c.indice,
+        paginas: c.paginas.map((p) => ({ numero: p.numero, texto: p.texto })),
+      })),
       banco: bancoFinal,
       motivo: "inicial",
       huella,
       resumenHuella,
-      perfilId: perfilIdFinal,
+      perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
     });
 
     return NextResponse.json(
