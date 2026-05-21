@@ -1,8 +1,10 @@
-import "server-only";
-
 /**
  * Matriz de planes del producto. Vive en código (no en DB) porque son
  * contrato comercial: cambian raramente y siempre con deploy.
+ *
+ * Sin `import "server-only"`: este módulo se importa desde componentes
+ * cliente (Card de planes en /login, formularios de admin). Es solo
+ * data + helpers puros, sin secretos ni acceso a DB.
  *
  * Precios en USD. Anual = 10 × mensual (2 meses gratis). Ajustá los
  * números acá si querés cambiar el pricing.

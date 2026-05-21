@@ -41,24 +41,35 @@ export default async function UiLayout({
                   Conciliación
                 </Link>
                 {esAdmin ? (
-                  <Link
-                    href="/formatos"
-                    className="transition-colors hover:text-foreground"
-                  >
-                    Formatos
-                  </Link>
+                  <>
+                    <Link
+                      href="/formatos"
+                      className="transition-colors hover:text-foreground"
+                    >
+                      Formatos
+                    </Link>
+                    <Link
+                      href="/admin"
+                      className="transition-colors hover:text-foreground"
+                    >
+                      Admin
+                    </Link>
+                  </>
                 ) : null}
               </nav>
             ) : null}
           </div>
           {session?.user ? (
             <div className="flex items-center gap-3 text-sm">
-              <span className="text-muted-foreground">
+              <Link
+                href="/cuenta"
+                className="text-muted-foreground hover:text-foreground"
+              >
                 {session.user.name ?? session.user.email}{" "}
                 <span className="rounded bg-muted px-1.5 py-0.5 text-xs uppercase">
                   {session.user.rol ?? "operador"}
                 </span>
-              </span>
+              </Link>
               <form
                 action={async () => {
                   "use server";
