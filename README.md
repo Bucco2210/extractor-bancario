@@ -19,7 +19,6 @@ Aplicación full-stack Next.js desplegada en Vercel, con MongoDB Atlas como base
 - **PDF**: `pdfjs-dist` legacy + `pdf-lib` (PDFs digitales — OCR/vision queda fuera del scope del proyecto)
 - **Excel**: `exceljs`
 - **Auth**: Auth.js v5 con adapter Mongo, roles `admin` / `operador`
-- **Jobs largos**: Inngest
 - **Utilidades**: `zod`, `pino`, `fast-levenshtein`
 
 ---
@@ -156,10 +155,11 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - 28 tests nuevos (parser + matcheador + cálculo de estadísticas con grupos).
 
 ### ✅ Fase 7 — Robustez (cerrada)
-- Inngest para jobs largos (`procesarExtraccionFn` dispara `correrExtraccion()` idempotente).
+- `correrExtraccion()` fire-and-forget desde el handler, idempotente vía `_meta.chunksCompletados[]` y reanudable con `POST /api/extracciones/[id]/reanudar`.
 - Encriptación de campos sensibles con `APP_ENCRYPTION_KEY` (AES-256-GCM).
-- Tests con cobertura ≥ 70% (75.23% al cierre).
+- Tests con cobertura ≥ 70%.
 - **OCR/vision para PDFs escaneados queda explícitamente fuera del scope** — solo soportamos PDFs digitales (texto extraíble).
+- Inngest se intentó y se removió: agregaba complejidad sin valor en modo local-only. Si se reactiva Vercel para PDFs largos > 300s habrá que volver a meter cola.
 
 ### ✅ Fase 9 — Monetización y administración (cerrada)
 - Matriz de planes en `app/lib/planes.ts` (Trial / Plus / Pro / Premium) con precios en USD, ciclos mensual/anual y límites de extracciones/conciliaciones.
@@ -226,10 +226,6 @@ CONCILIACION_TOLERANCIA_DIAS=2
 CONCILIACION_TOLERANCIA_IMPORTE_PESOS=1
 CONCILIACION_FUZZY_UMBRAL=0.85
 
-# === Jobs asíncronos ===
-INNGEST_EVENT_KEY=
-INNGEST_SIGNING_KEY=
-
 # === Mercado Pago (Fase 9, feature flag) ===
 MERCADO_PAGO_HABILITADO=false
 MERCADO_PAGO_ACCESS_TOKEN=
@@ -252,7 +248,6 @@ Todas se validan con `zod` en `app/lib/env.ts` al arrancar el servidor.
 | MongoDB | En uso | Local en desarrollo; Atlas cuando se reactive Vercel |
 | Vercel | **Pausado** | Reactivar cuando el sistema esté más maduro |
 | Vercel Blob | **Pausado** | Storage local en memoria; reemplazar al volver a Vercel |
-| Inngest | Diferido | Necesario recién en Fase 7 |
 
 ---
 
@@ -285,7 +280,6 @@ Se irá completando a lo largo de las fases:
 - `docs/WORKSPACE.md` — pestañas, store Zustand y sync a Mongo.
 - `docs/APRENDIZAJE.md` — huella, reglas regex y pipeline regla-primero.
 - `docs/CONCILIACION.md` — modelo `Conciliacion`, parser CSV/XLSX, matcheador, grupos manuales y UI doble panel.
-- `docs/INNGEST.md` — jobs durables, idempotencia y backoff.
 - `docs/MONETIZACION.md` — planes, invitaciones, plan-gate, panel admin, pagos manuales y MP detrás de flag.
 - `docs/PULIDO.md` — modo oscuro, KPIs del usuario, banner de ciclo.
 - `docs/COMANDOS.md` — cheatsheet rápido (setup, dev, cierre de fase, troubleshooting).
@@ -304,7 +298,7 @@ Se irá completando a lo largo de las fases:
 | 4 — Workspace con pestañas | ✅ Cerrada | `/workspace` con pestañas tipo navegador, store Zustand + persist + sync a Mongo, atajos, integración con Home. |
 | 5 — Aprendizaje | ✅ Cerrada | Huella + `FormatoAprendido` + regla regex, pipeline regla-primero con fallback IA, UI `/formatos` con editor y área de prueba. |
 | 6 — Conciliación | ✅ Cerrada | Modelo `Conciliacion`, parser CSV/XLSX con auto-mapeo y 422+mini-mapeador, matcheador determinístico 1:1 con tolerancias, grupos manuales 1:N/N:1, UI doble panel + export Excel + integración con vista de extracto. |
-| 7 — Robustez | ✅ Cerrada | Inngest para jobs durables, cifrado AES-256-GCM con `APP_ENCRYPTION_KEY`, cobertura ≥ 70%. |
+| 7 — Robustez | ✅ Cerrada | `correrExtraccion()` fire-and-forget idempotente y reanudable, cifrado AES-256-GCM con `APP_ENCRYPTION_KEY`, cobertura ≥ 70%. (Inngest se intentó y se removió por overhead injustificado en local-only.) |
 | 9 — Monetización | ✅ Cerrada | Matriz de planes, plan-gate, invitaciones, panel admin (usuarios/pagos/métricas), `/cuenta`, login rediseñado con planes, Mercado Pago detrás de flag. |
 | 8 — Pulido | ✅ Cerrada | Modo oscuro con toggle cíclico + anti-flash; KPIs del usuario en `/cuenta` + banner de ciclo en Home; documentación final (`ARQUITECTURA.md` y `DEPLOY_VERCEL.md` reescritos, `COMANDOS.md` y `PULIDO.md` nuevos). |
 

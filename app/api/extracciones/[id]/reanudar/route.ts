@@ -7,7 +7,7 @@ import { getBlobStorage } from "@/lib/blob";
 import { Extraccion } from "@/models/Extraccion";
 import { AppError, respuestaError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { dispararExtraccion } from "@/lib/inngest";
+import { correrExtraccion } from "@/lib/extraccion-runner";
 import type { ChunkDefinicion } from "@/lib/openai";
 
 export const runtime = "nodejs";
@@ -135,7 +135,7 @@ export async function POST(
       "reanudación iniciada",
     );
 
-    await dispararExtraccion({
+    void correrExtraccion({
       extraccionId: id,
       chunks: chunksAProcesar.map((c) => ({
         indice: c.indice,
@@ -146,6 +146,11 @@ export async function POST(
       huella: null,
       resumenHuella: null,
       perfilId: null,
+    }).catch((err) => {
+      logger.error(
+        { err, extraccionId: id },
+        "correrExtraccion (reanudar) falló sin handler",
+      );
     });
 
     return NextResponse.json(

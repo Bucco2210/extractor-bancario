@@ -12,7 +12,7 @@ import { FormatoAprendido } from "@/models/FormatoAprendido";
 import { AppError, respuestaError } from "@/lib/errors";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { dispararExtraccion } from "@/lib/inngest";
+import { correrExtraccion } from "@/lib/extraccion-runner";
 import {
   detectarPerfil,
   type CandidatoPerfil,
@@ -358,10 +358,12 @@ export async function POST(req: Request): Promise<NextResponse> {
         huella,
         msHastaResponse: Date.now() - t0,
       },
-      "[5/5] doc creado, lanzando job Inngest",
+      "[5/5] doc creado, lanzando runner fire-and-forget",
     );
 
-    await dispararExtraccion({
+    // Fire-and-forget: el cliente sigue el progreso vía polling. El runner
+    // ya es idempotente (avance por chunk en `_meta.chunksCompletados[]`).
+    void correrExtraccion({
       extraccionId: String(doc._id),
       chunks: chunks.map((c) => ({
         indice: c.indice,
@@ -371,7 +373,12 @@ export async function POST(req: Request): Promise<NextResponse> {
       motivo: "inicial",
       huella,
       resumenHuella,
-      perfilId: perfilIdFinal ? String(perfilIdFinal) : null,
+      perfilId: perfilIdFinal,
+    }).catch((err) => {
+      logger.error(
+        { err, extraccionId: String(doc._id) },
+        "correrExtraccion (inicial) falló sin handler",
+      );
     });
 
     return NextResponse.json(

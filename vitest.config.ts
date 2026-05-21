@@ -19,7 +19,6 @@ export default defineConfig({
         "app/models/**/*.ts",
       ],
       exclude: [
-        "app/lib/inngest-funciones/**", // wrapper trivial sobre runner
         // Adaptadores delgados a libs externas (testearlos = testear
         // pino/mongoose/openai-sdk/pdfjs/exceljs/vercel-blob, no nuestra
         // lógica). Su correctness se valida indirectamente vía los

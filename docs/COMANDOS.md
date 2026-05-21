@@ -18,9 +18,6 @@ npm run seed:admin      # crea/actualiza el usuario admin desde ADMIN_SEED_*
 
 ```bash
 npm run dev             # Next.js dev server en :3000
-npx inngest-cli@latest dev   # (opcional) dev server de Inngest en :8288
-                              # para ver los jobs durables al levantar
-                              # una extracción larga
 ```
 
 ## Cierre de fase / pre-commit
@@ -87,7 +84,7 @@ git status
 | Problema | Posible causa | Acción |
 |---|---|---|
 | `Variables de entorno inválidas` al arrancar | falta `APP_ENCRYPTION_KEY` (64 chars hex) o `AUTH_SECRET` (≥16 chars) | Generar con `openssl rand -hex 32` / `openssl rand -base64 32` |
-| Extracción se queda en `procesando` | Inngest dev-server no levantado | `npx inngest-cli@latest dev` o cablear `INNGEST_EVENT_KEY` para prod |
+| Extracción se queda en `procesando` | Proceso Next se reinició mid-job (fire-and-forget se perdió) | Tocar "Reanudar" en la UI o `POST /api/extracciones/[id]/reanudar` — el runner es idempotente y retoma desde los chunks pendientes |
 | `429 LIMITE_EXCEDIDO` en local | usuario operador alcanzó el límite del ciclo | login como admin (que pasa el gate) o ajustar el plan desde `/admin/usuarios` |
 | OpenAI rate-limited en bursts | varias extracciones simultáneas | bajar `EXTRACCION_CHUNKS_PARALELO` (default 3) |
 | Modo oscuro "se rompe" al recargar | localStorage cleareado o `.dark` no aplica | revisar consola por errores del script anti-flash; ver `app/lib/tema.ts` |
@@ -105,7 +102,6 @@ git status
 - `docs/ARQUITECTURA.md` — visión general, capas, flujo.
 - `docs/DEPLOY_VERCEL.md` — checklist al reactivar deploy.
 - `docs/MONETIZACION.md` — planes, plan-gate, admin, MP.
-- `docs/INNGEST.md` — jobs durables.
 - `docs/PERFILES_EXTRACCION.md` — catálogo y CRUD.
 - `docs/HOME_UX.md`, `docs/WORKSPACE.md` — patrones de UI.
 - `docs/APRENDIZAJE.md` — huella + reglas determinísticas.

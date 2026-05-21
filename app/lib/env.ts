@@ -76,10 +76,6 @@ const envSchema = z.object({
     .default(1),
   CONCILIACION_FUZZY_UMBRAL: z.coerce.number().min(0).max(1).default(0.85),
 
-  // Jobs (Inngest, fase 7)
-  INNGEST_EVENT_KEY: optionalString,
-  INNGEST_SIGNING_KEY: optionalString,
-
   // Mercado Pago (fase 9) — todo el camino vive detrás de la flag.
   // Cuando la flag está apagada, el webhook devuelve 503 y la UI no
   // muestra el botón. Las credenciales pueden quedar vacías en dev.

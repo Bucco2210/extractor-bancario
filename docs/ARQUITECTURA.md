@@ -79,8 +79,6 @@ por invitación (token único + expiración).
 │  Auth                                                          │
 │   * /api/auth/[...nextauth]                                    │
 │   POST /api/auth/aceptar-invitacion       (público)            │
-│  Jobs durables                                                 │
-│   * /api/inngest                                               │
 │  Pagos                                                         │
 │   POST /api/pagos/mercadopago/webhook     (público + HMAC)     │
 ├────────────────────────────────────────────────────────────────┤
@@ -97,7 +95,6 @@ por invitación (token único + expiración).
 │  · openai.ts           cliente + chunking + parse JSON         │
 │  · conciliacion-*      parser CSV/XLSX + matcheador greedy     │
 │  · cifrado.ts          AES-256-GCM idempotente                 │
-│  · inngest.ts          cliente + dispararExtraccion()          │
 │  · mercado-pago.ts     parse firma + HMAC + normalizar payment │
 │  · tema.ts             puro, helpers de modo oscuro            │
 │  · kpis-usuario.ts     agregados para /cuenta y banner Home    │
@@ -115,8 +112,7 @@ por invitación (token único + expiración).
 ├────────────────────────────────────────────────────────────────┤
 │ Infra externa                                                  │
 │  MongoDB (Atlas o local), Vercel Blob (o storage en memoria    │
-│  en dev), OpenAI, Inngest (cloud o dev-server), Mercado Pago   │
-│  (detrás de flag)                                              │
+│  en dev), OpenAI, Mercado Pago (detrás de flag)                │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -133,12 +129,8 @@ por invitación (token único + expiración).
    │  límite. Si está al tope → 429 LIMITE_EXCEDIDO
    ├─ persiste extracción `pendiente` + sube el archivo al blob
    │
-3. POST a Inngest: evento `extraccion.procesar`
-   │  (idempotente: chunks ya hechos no se re-procesan)
-   ▼
-4. Inngest → POST /api/inngest → procesarExtraccionFn
-   └─ correrExtraccion():
-      ├─ pdf.ts: extrae texto por página
+3. void correrExtraccion(...) fire-and-forget desde el handler
+   └─ pdf.ts: extrae texto por página
       ├─ huella.ts: SHA-256 de primeras N líneas normalizadas
       ├─ regla-determinista: si hay regla activa + matchRate>=umbral
       │    → guarda fuente="regla", listo
@@ -148,13 +140,15 @@ por invitación (token único + expiración).
       ├─ cifrado.ts: cifra titular, cuenta y descripciones sensibles
       └─ aprendizaje.ts: upsert FormatoAprendido al cerrar OK
    │
-5. front polea `GET /api/extracciones/[id]` cada 2s
+4. front polea `GET /api/extracciones/[id]` cada 2s
    ▼
-6. UI muestra "Extracción lista" + link a Excel/conciliación
+5. UI muestra "Extracción lista" + link a Excel/conciliación
 ```
 
-Idempotencia: si Inngest reintenta el job, los chunks ya hechos
-se saltean (matcheo por `extraccionId` + idx). Ver `docs/INNGEST.md`.
+Idempotencia y reanudación: si el proceso Next se reinicia mid-job,
+la extracción queda en `procesando` y se destraba con
+`POST /api/extracciones/[id]/reanudar` (matcheo por `extraccionId`
++ índice de chunk en `_meta.chunksCompletados[]`).
 
 ---
 
@@ -200,7 +194,7 @@ Ver `docs/MONETIZACION.md` para la matriz de planes.
 - **Auth.js v5** con adapter custom + credenciales (`app/lib/auth.ts`).
   Bcrypt 12 rounds para passwords (`app/lib/password.ts`).
 - **`proxy.ts`** (middleware) gatea todas las rutas excepto:
-  `/login`, `/registro/<token>`, `/api/auth/*`, `/api/inngest`,
+  `/login`, `/registro/<token>`, `/api/auth/*`,
   `/api/pagos/mercadopago/webhook` (HMAC firma reemplaza sesión).
 - **Roles** (`app/lib/permisos.ts`): `admin` puede tocar perfiles,
   formatos, panel admin; `operador` solo lectura + crear su propio
@@ -267,7 +261,7 @@ Tests separados por área (ver `tests/`):
 - `tema.test.ts`, `kpis-usuario.test.ts` (fase 8)
 - `planes.test.ts`, `plan-gate.test.ts`, `api-admin.test.ts`,
   `mercado-pago.test.ts`, `api-mercado-pago-webhook.test.ts` (fase 9)
-- `inngest-*.test.ts`, `cifrado.test.ts` (fase 7)
+- `cifrado.test.ts` (fase 7)
 - `conciliacion-*.test.ts`, `conciliaciones-schema.test.ts` (fase 6)
 - `regla-determinista.test.ts`, `huella.test.ts`, `formatos-*.test.ts` (fase 5)
 - `workspace-store.test.ts` (fase 4)

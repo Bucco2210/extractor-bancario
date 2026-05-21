@@ -12,7 +12,6 @@
 | MongoDB Atlas | DB principal | M0 free alcanza para empezar. Usar SRV connection string. |
 | Vercel Blob | Storage de archivos originales | Activar desde el dashboard del proyecto. |
 | OpenAI | Motor de extracción | Modelo default `gpt-4o-mini`, fallback `gpt-4o`. |
-| Inngest | Jobs durables | Sign-up gratuito; pegar `EVENT_KEY` y `SIGNING_KEY`. |
 | Mercado Pago | Pagos (opcional) | Solo cuando se active `MERCADO_PAGO_HABILITADO`. |
 
 ## Variables de entorno (en Vercel project settings)
@@ -37,10 +36,6 @@ AUTH_URL=https://<dominio-vercel>
 AUTH_TRUST_HOST=true
 APP_ENCRYPTION_KEY=<64 chars hex>
 
-# Inngest (sign up en inngest.com)
-INNGEST_EVENT_KEY=
-INNGEST_SIGNING_KEY=
-
 # Mercado Pago (opcional, default OFF)
 MERCADO_PAGO_HABILITADO=false
 MERCADO_PAGO_ACCESS_TOKEN=
@@ -62,23 +57,25 @@ ADMIN_SEED_NOMBRE="Admin B&B Tech"
    `getBlobStorage()` ya soporta swap entre memoria y Vercel Blob — al
    reactivar, completar la implementación de `VercelBlobStorage` con
    `@vercel/blob`.
-4. **Inngest**: crear app en inngest.com, configurar el endpoint
-   apuntando a `https://<dominio>/api/inngest`, copiar las dos keys.
-   Ver `docs/INNGEST.md` para detalles.
-5. **OpenAI**: pegar `OPENAI_API_KEY`. Activar rate-limit en el panel
+4. **OpenAI**: pegar `OPENAI_API_KEY`. Activar rate-limit en el panel
    de OpenAI según el `LIMITE_TOKENS_MENSUAL` configurado.
-6. **Auth**: generar `AUTH_SECRET` (`openssl rand -base64 32`),
+5. **Auth**: generar `AUTH_SECRET` (`openssl rand -base64 32`),
    `APP_ENCRYPTION_KEY` (`openssl rand -hex 32`), setear `AUTH_URL` al
    dominio final, `AUTH_TRUST_HOST=true`.
-7. **Seed**: correr `npm run seed:admin` y `npm run seed:perfiles`
+6. **Seed**: correr `npm run seed:admin` y `npm run seed:perfiles`
    contra el Atlas desde local (los scripts leen las mismas env vars)
    o desde una Vercel function one-shot.
-8. **Verificar**: login → upload de un PDF → extracción completa →
+7. **Verificar**: login → upload de un PDF → extracción completa →
    export Excel. Si pasa, probar conciliación con un CSV simple.
-9. **(Opcional) Mercado Pago**: cuando esté la cuenta de negocio,
+8. **(Opcional) Mercado Pago**: cuando esté la cuenta de negocio,
    setear las 3 `MERCADO_PAGO_*`, configurar el webhook en el panel
    MP apuntando a `https://<dominio>/api/pagos/mercadopago/webhook`.
    Encender la flag activa el feature sin redeploy.
+9. **Cuidado con PDFs largos**: en serverless el handler tiene
+   `maxDuration: 300`. Como sacamos Inngest, las extracciones de
+   Provincia (60+ páginas, ~5 min) podrían cortarse. Si pasa,
+   reanudar con `POST /api/extracciones/[id]/reanudar` o re-introducir
+   una cola (Inngest / BullMQ / Vercel Queue).
 
 ## Notas de compatibilidad
 
@@ -88,10 +85,11 @@ ADMIN_SEED_NOMBRE="Admin B&B Tech"
 - **Cold starts**: Mongoose se cachea en `globalThis` (ver
   `app/lib/mongo.ts`); las primeras request del día pueden tardar
   300-800ms más mientras se levanta la conexión.
-- **Inngest** maneja extracciones largas (Provincia 60+ páginas
-  toma varios minutos); la API responde inmediatamente con el
-  `extraccionId` y el job sigue corriendo en Inngest. El front polea
-  `GET /api/extracciones/[id]`.
+- **Extracciones largas**: la API responde inmediatamente con el
+  `extraccionId` y el runner sigue corriendo fire-and-forget en el
+  mismo proceso. El front polea `GET /api/extracciones/[id]`. El
+  runner persiste cada chunk en `_meta.chunksCompletados[]` así que
+  si se corta, se reanuda con `POST /api/extracciones/[id]/reanudar`.
 - El blob no se persiste localmente (storage en memoria en dev);
   reiniciar el server pierde los uploads en curso. En prod con Vercel
   Blob esto no aplica.

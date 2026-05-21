@@ -17,7 +17,6 @@
 - **`pdfjs-dist` legacy + `pdf-lib`** (PDFs digitales únicamente — OCR/vision queda fuera del scope)
 - **`exceljs`** para exportación
 - **Auth.js v5** con adapter Mongo, roles `admin` / `operador`
-- **Inngest** para jobs largos
 - **`zod`, `pino`, `fast-levenshtein`**
 
 ## Las tres capas de navegación
@@ -98,7 +97,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 4. **Workspace con pestañas** — `/workspace`, Zustand persist, sincronización a Mongo, atajos.
 5. **Aprendizaje** — huella, reglas determinísticas, UI `/formatos`.
 6. **Conciliación** — segunda fuente, matcheo con tolerancias, doble panel.
-7. **Robustez** — Inngest, encriptación, tests ≥ 70%. (OCR/vision para PDFs escaneados queda fuera del scope.)
+7. **Robustez** — encriptación, tests ≥ 70%. (OCR/vision para PDFs escaneados queda fuera del scope.)
 8. **Pulido** — dashboard KPIs, modo oscuro, docs finales.
 
 ## Reglas operativas
@@ -107,7 +106,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 2. **Antes de instalar dependencias, justificar** qué problema resuelve y por qué no se puede sin ella.
 3. **Antes de asumir, preguntar.** Si hay ambigüedad funcional o de UX, frenar y consultar.
 4. **Commits atómicos en español.**
-5. **Documentación viva**: mantener al día `docs/ARQUITECTURA.md`, `docs/DEPLOY_VERCEL.md`, `docs/PERFILES_EXTRACCION.md`, `docs/HOME_UX.md`, `docs/WORKSPACE.md`, `docs/APRENDIZAJE.md`, `docs/CONCILIACION.md`, `docs/INNGEST.md`, `docs/MONETIZACION.md`, `docs/PULIDO.md`, `docs/COMANDOS.md`.
+5. **Documentación viva**: mantener al día `docs/ARQUITECTURA.md`, `docs/DEPLOY_VERCEL.md`, `docs/PERFILES_EXTRACCION.md`, `docs/HOME_UX.md`, `docs/WORKSPACE.md`, `docs/APRENDIZAJE.md`, `docs/CONCILIACION.md`, `docs/MONETIZACION.md`, `docs/PULIDO.md`, `docs/COMANDOS.md`.
 6. **Deploy a Vercel verificado al cierre de cada fase**, no solo `npm run build` local.
 7. **No mezclar las tres capas de tabs** ni renombrarlas — son conceptos distintos.
 
@@ -152,7 +151,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 - **Fase 4 — Workspace**: ruta `/workspace` con pestañas tipo navegador, store Zustand con `persist` (localStorage) + sync a Mongo (debounced 500ms) via `useWorkspaceSync`. Endpoints `GET/PUT /api/usuarios/pestanas` (recorte server-side al `MAX_PESTANAS_ABIERTAS`). Atajos: `Cmd/Ctrl+W`, `Cmd/Ctrl+Shift+W`, `Cmd/Ctrl+1..9`. Dropzone/panel/carrusel/modal de la Home abren pestaña + redirigen a `/workspace`. La vista `/extracciones/[id]` standalone queda accesible para bookmarks.
 - **Fase 5 — Aprendizaje**: modelo `FormatoAprendido` con huella SHA-256 + regla regex (grupos `fecha`, `descripcion`, `referencia`, `debito`, `credito`, `saldo`). Pipeline regla-primero: si hay regla activa para la huella y `matchRate >= APRENDIZAJE_UMBRAL_MATCH_RATE` (default 0.8), persiste `fuente="regla"` sin llamar a OpenAI. Si no, fallback IA y upsert del formato (stats.extraccionesIA++) al cerrar exitoso. Endpoints `/api/formatos/*` (lectura sesión, edición admin) + `POST /[id]/probar`. UI `/formatos` con editor y área de prueba (solo admin escribe). Vista de detalle muestra badge "Regla determinística" vs "Extracción por IA".
 - **Fase 6 — Conciliación**: modelo `Conciliacion` con `segundaFuente` embebida (registros parseados + mapeo + headers crudos), `matches[]` 1:1 con `confirmadoManualmente`, `descartadosExtracto[]`, `gruposManuales[]` (sumatorias 1:N / N:1) y `estadisticas` recalculadas server-side. Parser CSV (sep auto, comillas, BOM) + XLSX con auto-mapeo de columnas por sinónimos; si falta columna requerida devuelve 422 + headers crudos para mini-mapeador del front. Matcheador determinístico (sin OpenAI) score = 0.4·fecha + 0.3·importe + 0.3·descripción (fast-levenshtein), tolerancias `(días, importe, fuzzy)` desde `.env`, comparación por valor absoluto, asignación 1:1 greedy. Endpoints `GET/POST /api/conciliaciones`, `GET/PATCH/DELETE /api/conciliaciones/[id]` y `GET /api/conciliaciones/[id]/excel`. PATCH soporta `forzarMatch`, `quitarMatch`, `descartarExtracto`, `crearGrupoManual`, `eliminarGrupoManual`, `reMatchear` (preserva manuales y grupos). UI `/conciliacion` (listado) y `/conciliacion/[id]` (doble panel + selección múltiple + barra contextual + tolerancias + grupos manuales). Integración en `/extracciones/[id]` y `/workspace` con panel "Conciliaciones" (historial + nuevo + mini-mapeador in-line).
-- **Fase 7 — Robustez**: Inngest dispara `procesarExtraccionFn` para reemplazar el fire-and-forget; `correrExtraccion()` queda idempotente vía `_meta.chunksCompletados[]`. Cifrado AES-256-GCM con `APP_ENCRYPTION_KEY` en `app/lib/cifrado.ts` para campos sensibles del modelo. Cobertura ≥ 70% (75.23%). OCR/vision **fuera del scope**.
+- **Fase 7 — Robustez**: `correrExtraccion()` corre fire-and-forget desde el handler (`void correrExtraccion(...).catch(log)`), idempotente vía `_meta.chunksCompletados[]`, reanudable por `POST /api/extracciones/[id]/reanudar`. Cifrado AES-256-GCM con `APP_ENCRYPTION_KEY` en `app/lib/cifrado.ts` para campos sensibles del modelo. Cobertura ≥ 70%. OCR/vision **fuera del scope**. (Inngest se intentó en Fase 7 y se removió: agregaba complejidad sin valor en modo local-only; si se reactiva Vercel para PDFs largos > 300s, habría que volver a meter cola.)
 - **Fase 9 — Monetización**: matriz de planes en `app/lib/planes.ts` (Trial / Plus / Pro / Premium) con precios USD y límites; modelos `Pago` + `Invitacion`; `plan-gate` corre antes de creación de extracciones/conciliaciones (bootstrap a trial, rotación, modo lectura, 429); endpoints `/api/admin/*` con role gate; flujo de invitación público `/registro/[token]` + `POST /api/auth/aceptar-invitacion`; UI admin (`/admin`, `/admin/usuarios`, `/admin/pagos`); `/cuenta` self-service; login rediseñado con 3 planes. Mercado Pago detrás de `MERCADO_PAGO_HABILITADO`: webhook con HMAC + idempotencia por `mpPaymentId` + extensión de ciclo. Ver `docs/MONETIZACION.md`.
 - **Fase 8 — Pulido**: modo oscuro funcional con toggle cíclico (system → light → dark) en el header, persistencia localStorage, script anti-flash en `<head>`, sync entre tabs vía `useSyncExternalStore` (ver `app/lib/tema.ts` y `app/components/ui/ToggleTema.tsx`); KPIs personales en `/cuenta` (extracciones/conciliaciones del ciclo + tokens + breakdown por estado) calculados por `app/lib/kpis-usuario.ts`; banner de ciclo en Home (server component, ámbar al pasar 80%, aviso de modo lectura si vence); documentación final reescrita (`ARQUITECTURA.md`, `DEPLOY_VERCEL.md`, `COMANDOS.md`, `PULIDO.md`). 420/420 tests verde.
 
