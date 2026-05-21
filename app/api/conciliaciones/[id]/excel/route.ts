@@ -6,6 +6,10 @@ import { AppError, respuestaError } from "@/lib/errors";
 import { requerirSesion } from "@/lib/permisos";
 import { Conciliacion } from "@/models/Conciliacion";
 import { Extraccion } from "@/models/Extraccion";
+import {
+  descifrarConciliacionLean,
+  descifrarExtraccionLean,
+} from "@/lib/cifrado";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,18 +27,20 @@ export async function GET(
       throw new AppError("INPUT_INVALIDO", "ID inválido.");
     }
     await conectarMongoose();
-    const conc = await Conciliacion.findOne({
+    const concRaw = await Conciliacion.findOne({
       _id: new Types.ObjectId(id),
       usuarioId: new Types.ObjectId(session.user.id),
     }).lean();
-    if (!conc) throw new AppError("NO_ENCONTRADO", "Conciliación no encontrada.");
+    if (!concRaw) throw new AppError("NO_ENCONTRADO", "Conciliación no encontrada.");
+    const conc = descifrarConciliacionLean(concRaw);
 
-    const extraccion = await Extraccion.findOne({
+    const extraccionRaw = await Extraccion.findOne({
       _id: conc.extraccionId,
       usuarioId: new Types.ObjectId(session.user.id),
     })
       .select({ movimientos: 1, banco: 1, periodo: 1, cuenta: 1 })
       .lean();
+    const extraccion = descifrarExtraccionLean(extraccionRaw);
 
     const movimientos = extraccion?.movimientos ?? [];
     const matchPorExtracto = new Map<number, (typeof conc.matches)[number]>();

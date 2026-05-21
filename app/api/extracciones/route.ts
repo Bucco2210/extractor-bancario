@@ -24,6 +24,7 @@ import {
   registrarExtraccionPorRegla,
   registrarFalloRegla,
 } from "@/lib/aprendizaje";
+import { cifrarMovimientos } from "@/lib/cifrado";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -235,7 +236,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         fuente: "regla",
         huella,
         formatoAprendidoId: formatoAplicado._id,
-        movimientos: reglaResultado.movimientos,
+        movimientos: cifrarMovimientos(reglaResultado.movimientos),
         archivo: {
           nombre: archivo.name,
           tamano: archivo.size,

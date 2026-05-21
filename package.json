@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "seed:perfiles": "tsx scripts/seed-perfiles.ts"
+    "seed:perfiles": "tsx scripts/seed-perfiles.ts",
+    "migrar:encriptacion": "tsx scripts/migrar-encriptacion.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.7.5",

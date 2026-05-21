@@ -3,6 +3,7 @@ import { Extraccion } from "@/models/Extraccion";
 import { PerfilExtraccion } from "@/models/PerfilExtraccion";
 import { Usuario } from "@/models/Usuario";
 import { getEnv } from "./env";
+import { descifrar } from "./cifrado";
 
 export type PerfilResumen = {
   id: string;
@@ -229,11 +230,21 @@ export async function construirHomeResumen(
       .lean(),
   ]);
 
+  // Descifrar cuenta/titular para los últimos extractos (los movimientos
+  // permanecen cifrados — acá solo se usa .length, no su contenido).
+  const ultimosDocsDesc = (ultimosDocs as unknown as ExtraccionLean[]).map(
+    (d) => ({
+      ...d,
+      cuenta: descifrar(d.cuenta ?? null),
+      titular: descifrar(d.titular ?? null),
+    }),
+  );
+
   return armarHomeResumen({
     perfiles: perfiles as unknown as PerfilLean[],
     bancosFavoritos: usuario?.preferencias?.bancosFavoritos ?? [],
     bancosDestacados: env.HOME_BANCOS_DESTACADOS,
     conteoPorPerfil: conteoPorPerfil as ConteoLean[],
-    ultimosDocs: ultimosDocs as unknown as ExtraccionLean[],
+    ultimosDocs: ultimosDocsDesc,
   });
 }

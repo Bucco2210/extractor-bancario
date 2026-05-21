@@ -5,6 +5,7 @@ import { Extraccion } from "@/models/Extraccion";
 import { procesarChunks, type ChunkDefinicion } from "@/lib/openai";
 import { logger } from "@/lib/logger";
 import { registrarFormatoTrasIA } from "@/lib/aprendizaje";
+import { cifrar, cifrarMovimientos } from "@/lib/cifrado";
 
 type CorrerParams = {
   extraccionId: string;
@@ -82,10 +83,18 @@ export async function correrExtraccion(params: CorrerParams): Promise<void> {
       chunks,
       banco: banco ?? undefined,
       onChunkOk: async (info) => {
+        // Cifrado en reposo: cuenta y titular se cifran; periodo es no
+        // sensible (solo rango de fechas tipo "feb-2026"). Movimientos van
+        // cifrados antes del $push.
         const setSiNulo: Record<string, string> = {};
-        if (info.resultado.cuenta) setSiNulo.cuenta = info.resultado.cuenta;
+        if (info.resultado.cuenta) {
+          setSiNulo.cuenta = cifrar(info.resultado.cuenta);
+        }
         if (info.resultado.periodo) setSiNulo.periodo = info.resultado.periodo;
-        if (info.resultado.titular) setSiNulo.titular = info.resultado.titular;
+        if (info.resultado.titular) {
+          setSiNulo.titular = cifrar(info.resultado.titular);
+        }
+        const movimientosCifrados = cifrarMovimientos(info.resultado.movimientos);
 
         await conReintentosMongo(
           () =>
@@ -93,7 +102,7 @@ export async function correrExtraccion(params: CorrerParams): Promise<void> {
               { _id: new Types.ObjectId(extraccionId) },
               {
                 $push: {
-                  movimientos: { $each: info.resultado.movimientos },
+                  movimientos: { $each: movimientosCifrados },
                   "_meta.chunksCompletados": info.indice,
                 },
                 $pull: {

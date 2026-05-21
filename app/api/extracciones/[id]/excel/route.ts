@@ -5,6 +5,7 @@ import { conectarMongoose } from "@/lib/mongo";
 import { Extraccion } from "@/models/Extraccion";
 import { exportarMovimientosExcel } from "@/lib/excel";
 import { AppError, respuestaError } from "@/lib/errors";
+import { descifrarExtraccionLean } from "@/lib/cifrado";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,11 +24,12 @@ export async function GET(
     }
 
     await conectarMongoose();
-    const doc = await Extraccion.findOne({
+    const docRaw = await Extraccion.findOne({
       _id: id,
       usuarioId: session.user.id,
     }).lean();
-    if (!doc) throw new AppError("NO_ENCONTRADO", "Extracción no encontrada.");
+    if (!docRaw) throw new AppError("NO_ENCONTRADO", "Extracción no encontrada.");
+    const doc = descifrarExtraccionLean(docRaw);
 
     const xlsx = await exportarMovimientosExcel({
       banco: doc.banco,

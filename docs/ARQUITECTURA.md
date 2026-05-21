@@ -324,11 +324,67 @@ Detalle completo en [docs/APRENDIZAJE.md](./APRENDIZAJE.md).
 
 ---
 
+## Cifrado en reposo (Fase 7)
+
+Para proteger los datos bancarios sensibles, ciertos campos se persisten
+cifrados en MongoDB usando **AES-256-GCM** con autenticación. La clave de
+32 bytes se deriva de `APP_ENCRYPTION_KEY` (64 chars hex, validada en
+`app/lib/env.ts`).
+
+### Formato del ciphertext
+
+`enc:v1:<iv_base64>:<tag_base64>:<data_base64>`
+
+- El prefijo `enc:v1:` permite detectar valores ya cifrados y soporta
+  rotación futura de algoritmo (v2, v3…).
+- IV de 12 bytes aleatorio por cifrado (estándar GCM).
+- El tag de autenticación detecta tampering: cualquier alteración del
+  ciphertext hace que `descifrar()` tire un error.
+
+### Campos cifrados
+
+| Modelo | Campo | Tipo |
+|---|---|---|
+| `extracciones` | `cuenta` | número de cuenta / CBU |
+| `extracciones` | `titular` | PII fuerte |
+| `extracciones` | `movimientos[].descripcion` | detalle transaccional |
+| `extracciones` | `movimientos[].referencia` | refs operaciones |
+| `conciliaciones` | `segundaFuente.registros[].descripcion` | mismo motivo |
+| `conciliaciones` | `segundaFuente.registros[].referencia` | idem |
+
+**Lo que no se cifra y por qué**:
+- `Usuario.email`: es clave de lookup en login.
+- Importes (`debito/credito/saldo/monto`): números puros sin contexto,
+  cifrar rompería agregaciones y reportes.
+- `archivo.blobUrl`: la URL apunta a Vercel Blob con control de acceso
+  propio; el contenido del PDF no llega a Mongo.
+
+### Helpers (`app/lib/cifrado.ts`)
+
+- `cifrar(s)` / `descifrar(s)`: idempotentes (cifrar dos veces no
+  re-cifra; descifrar un plaintext lo devuelve igual). `null/undefined/""`
+  pasan tal cual.
+- `cifrarMovimiento(m)` / `descifrarMovimiento(m)`: convenience por
+  campo conocido.
+- `descifrarExtraccionLean(doc)` / `descifrarConciliacionLean(doc)`: para
+  resultados de `.lean()`, donde los getters Mongoose no se disparan.
+
+### Migración de datos existentes
+
+```
+npm run migrar:encriptacion -- --dry-run
+npm run migrar:encriptacion
+```
+
+Idempotente: detecta documentos ya cifrados y los saltea. Hacé backup
+antes de correrlo en producción.
+
+---
+
 ## Pendientes para fases siguientes
 
-- **Fase 6**: conciliación con segunda fuente, matcheo con tolerancias, doble panel.
-- **Fase 4**: workspace con pestañas tipo navegador.
-- **Fase 5**: aprendizaje de formato + reglas determinísticas.
-- **Fase 6**: conciliación con segunda fuente.
-- **Fase 7**: OCR (OpenAI vision), Inngest, encriptación AES-GCM con `APP_ENCRYPTION_KEY`, tests ≥ 70%.
+- **Fase 7 (en curso)**: ✅ encriptación AES-GCM en reposo. Pendiente:
+  Inngest para jobs largos, cobertura de tests ≥ 70%.
 - **Fase 8**: dashboard de KPIs, modo oscuro, documentación final.
+- **Fase 9 (nueva)**: monetización, planes Plus/Pro/Premium, panel
+  admin, login con planes, integración Mercado Pago.

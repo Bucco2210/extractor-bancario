@@ -13,6 +13,11 @@ import {
   matchear,
   type Tolerancias,
 } from "@/lib/conciliacion-matcheo";
+import {
+  descifrar,
+  descifrarConciliacionLean,
+  descifrarMovimientos,
+} from "@/lib/cifrado";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +45,9 @@ export async function GET(_req: Request, ctx: Ctx): Promise<NextResponse> {
     const { id } = await ctx.params;
     await conectarMongoose();
     const doc = await leerYAutorizar(id, session.user.id);
-    return NextResponse.json(serializarConciliacion(doc.toObject()));
+    const plano = doc.toObject();
+    descifrarConciliacionLean(plano);
+    return NextResponse.json(serializarConciliacion(plano));
   } catch (err) {
     return respuestaError(err);
   }
@@ -191,9 +198,12 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<NextResponse> {
         for (const i of g.extractoIdxs) ocupadosExtracto.add(i);
         for (const i of g.registroIdxs) ocupadosRegistro.add(i);
       }
-      const movimientosExtracto = aMovimientosExtracto(
+      const movimientosPlano = descifrarMovimientos(
         extraccion.movimientos ?? [],
-      ).filter((m) => !ocupadosExtracto.has(m.idx));
+      );
+      const movimientosExtracto = aMovimientosExtracto(movimientosPlano).filter(
+        (m) => !ocupadosExtracto.has(m.idx),
+      );
       const tol: Tolerancias = {
         dias: doc.tolerancias.dias,
         importe: doc.tolerancias.importe,
@@ -206,9 +216,9 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<NextResponse> {
           .map((r) => ({
             idx: r.idx,
             fecha: r.fecha ?? null,
-            descripcion: r.descripcion ?? "",
+            descripcion: descifrar(r.descripcion ?? "") ?? "",
             monto: r.monto ?? null,
-            referencia: r.referencia ?? null,
+            referencia: descifrar(r.referencia ?? null),
           })),
         tolerancias: tol,
         descartadosExtracto: doc.descartadosExtracto,
@@ -256,7 +266,9 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<NextResponse> {
     doc.set("estadisticas", estadisticas);
 
     await doc.save();
-    return NextResponse.json(serializarConciliacion(doc.toObject()));
+    const plano = doc.toObject();
+    descifrarConciliacionLean(plano);
+    return NextResponse.json(serializarConciliacion(plano));
   } catch (err) {
     return respuestaError(err);
   }

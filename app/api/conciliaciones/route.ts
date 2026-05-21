@@ -16,6 +16,11 @@ import {
 } from "@/lib/conciliacion-matcheo";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import {
+  cifrarRegistrosSegundaFuente,
+  descifrarConciliacionLean,
+  descifrarMovimientos,
+} from "@/lib/cifrado";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,13 +70,14 @@ export async function GET(req: Request): Promise<NextResponse> {
       .lean();
     return NextResponse.json({
       total: docs.length,
-      items: docs.map((d) =>
-        serializarConciliacion({
+      items: docs.map((d) => {
+        descifrarConciliacionLean(d);
+        return serializarConciliacion({
           ...d,
           createdAt: (d as { createdAt?: Date }).createdAt,
           updatedAt: (d as { updatedAt?: Date }).updatedAt,
-        }),
-      ),
+        });
+      }),
     });
   } catch (err) {
     return respuestaError(err);
@@ -174,7 +180,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       fuzzyUmbral: env.CONCILIACION_FUZZY_UMBRAL,
     };
 
-    const movimientosExtracto = aMovimientosExtracto(extraccion.movimientos ?? []);
+    // Descifrar movimientos antes del matching (compara descripciones).
+    const movimientosPlano = descifrarMovimientos(extraccion.movimientos ?? []);
+    const movimientosExtracto = aMovimientosExtracto(movimientosPlano);
     const r = matchear({
       movimientos: movimientosExtracto,
       registros: resultado.data.registros,
@@ -198,7 +206,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       segundaFuente: {
         archivoNombre: archivo.name,
         formato: resultado.data.formato,
-        registros: resultado.data.registros,
+        registros: cifrarRegistrosSegundaFuente(resultado.data.registros),
         mapeoColumnas: resultado.data.mapeoColumnas,
         headersOriginales: resultado.data.headers,
       },
@@ -220,7 +228,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       "conciliación creada",
     );
 
-    return NextResponse.json(serializarConciliacion(doc.toObject()), {
+    // Descifrar el doc devuelto para la response (toObject mantiene los
+    // registros tal como están en DB, o sea cifrados).
+    const docPlano = doc.toObject();
+    descifrarConciliacionLean(docPlano);
+    return NextResponse.json(serializarConciliacion(docPlano), {
       status: 201,
     });
   } catch (err) {
