@@ -4,6 +4,8 @@ import { FormatoAprendido } from "../app/models/FormatoAprendido";
 import { Extraccion } from "../app/models/Extraccion";
 import { Usuario } from "../app/models/Usuario";
 import { PerfilExtraccion } from "../app/models/PerfilExtraccion";
+import { Pago } from "../app/models/Pago";
+import { Invitacion } from "../app/models/Invitacion";
 
 describe("modelos Mongoose registrados", () => {
   it("Conciliacion tiene los paths esperados", () => {
@@ -79,5 +81,44 @@ describe("modelos Mongoose registrados", () => {
 
   it("PerfilExtraccion expone modelo", () => {
     expect(PerfilExtraccion.modelName).toBe("PerfilExtraccion");
+  });
+
+  it("Usuario incluye planInfo embebido (Fase 9)", () => {
+    const planInfoPath = Usuario.schema.path("planInfo");
+    expect(planInfoPath).toBeDefined();
+  });
+
+  it("Pago tiene los campos críticos", () => {
+    const paths = Pago.schema.paths;
+    expect(paths).toHaveProperty("usuarioId");
+    expect(paths).toHaveProperty("plan");
+    expect(paths).toHaveProperty("cicloFacturacion");
+    expect(paths).toHaveProperty("monto");
+    expect(paths).toHaveProperty("moneda");
+    expect(paths).toHaveProperty("periodoInicio");
+    expect(paths).toHaveProperty("periodoFin");
+    expect(paths).toHaveProperty("fuente");
+    expect(paths).toHaveProperty("mpPaymentId");
+  });
+
+  it("Pago.fuente acepta manual y mercadopago", () => {
+    const fuentePath = Pago.schema.path("fuente");
+    const enumValues = (fuentePath as unknown as {
+      enumValues: string[];
+    }).enumValues;
+    expect(enumValues).toEqual(["manual", "mercadopago"]);
+  });
+
+  it("Invitacion tiene token único y campos críticos", () => {
+    const paths = Invitacion.schema.paths;
+    expect(paths).toHaveProperty("token");
+    expect(paths).toHaveProperty("email");
+    expect(paths).toHaveProperty("planSugerido");
+    expect(paths).toHaveProperty("expiraEn");
+    expect(paths).toHaveProperty("usadaEn");
+
+    const tokenPath = Invitacion.schema.path("token");
+    expect((tokenPath as unknown as { options: { unique: boolean } }).options.unique)
+      .toBe(true);
   });
 });
