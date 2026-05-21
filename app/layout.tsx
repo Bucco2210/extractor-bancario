@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Funnel_Display, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { SCRIPT_ANTI_FLASH } from "@/lib/tema";
 import "./globals.css";
 
 const funnelDisplay = Funnel_Display({
@@ -29,7 +30,14 @@ export default function RootLayout({
     <html
       lang="es-AR"
       className={`${funnelDisplay.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Script inline anti-flash: corre antes del primer paint,
+            aplica .dark al <html> según localStorage + prefers-color-scheme.
+            Ver app/lib/tema.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_ANTI_FLASH }} />
+      </head>
       <body className="min-h-full flex flex-col text-foreground bg-app-gradient">
         {children}
         <Toaster richColors position="top-right" />
