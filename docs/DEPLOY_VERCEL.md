@@ -1,22 +1,110 @@
 # Deploy a Vercel
 
-> **Estado: pendiente.** Esta guía se completa cuando arranque la conexión a Vercel (fase posterior a Fase 1).
-> Por ahora todo corre local; el código ya está preparado para serverless (conexiones a Mongo cacheadas, no hay persistencia en disco, blob abstraído).
+> **Estado vigente: deploy pausado por decisión del usuario.**
+> Iteramos solo local — los pasos de cierre de fase son
+> `lint + typecheck + test + build`. Cuando se reactive el deploy,
+> esta guía cubre el setup completo de las 8 fases ya cerradas.
 
-## TODO al iniciar el deploy
+## Servicios externos requeridos
 
-1. Crear proyecto en Vercel apuntando al repo.
-2. Crear MongoDB Atlas (M0 free) y cargar `MONGODB_URI`.
-3. Activar **Vercel Blob** en el proyecto y copiar `BLOB_READ_WRITE_TOKEN`.
-4. Cargar el resto de variables de entorno (ver `.env.example`).
-5. Implementar `VercelBlobStorage implements BlobStorage` en `app/lib/blob.ts` y hacer que `getBlobStorage()` la elija cuando `BLOB_READ_WRITE_TOKEN` está presente.
-6. Generar `AUTH_SECRET` con `openssl rand -base64 32` y `APP_ENCRYPTION_KEY` con `openssl rand -hex 32`.
-7. Setear `AUTH_URL` al dominio final del deploy.
-8. Verificar que el seed admin (`npm run seed:admin`) corra contra el Atlas — o crear el usuario con un script equivalente en producción.
-9. Probar el flujo completo: login → upload → extracción → export Excel.
+| Servicio | Rol | Notas |
+|---|---|---|
+| MongoDB Atlas | DB principal | M0 free alcanza para empezar. Usar SRV connection string. |
+| Vercel Blob | Storage de archivos originales | Activar desde el dashboard del proyecto. |
+| OpenAI | Motor de extracción | Modelo default `gpt-4o-mini`, fallback `gpt-4o`. |
+| Inngest | Jobs durables | Sign-up gratuito; pegar `EVENT_KEY` y `SIGNING_KEY`. |
+| Mercado Pago | Pagos (opcional) | Solo cuando se active `MERCADO_PAGO_HABILITADO`. |
+
+## Variables de entorno (en Vercel project settings)
+
+Ver `.env.example` para la lista completa con defaults. Todas se validan
+con zod en `app/lib/env.ts` al arrancar el server. Las críticas:
+
+```
+# Mongo
+MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/
+MONGODB_DB_NAME=ethos_extractos
+
+# Storage
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
+
+# OpenAI
+OPENAI_API_KEY=sk-...
+
+# Auth (generar con openssl rand -base64 32 / hex 32)
+AUTH_SECRET=<32+ caracteres>
+AUTH_URL=https://<dominio-vercel>
+AUTH_TRUST_HOST=true
+APP_ENCRYPTION_KEY=<64 chars hex>
+
+# Inngest (sign up en inngest.com)
+INNGEST_EVENT_KEY=
+INNGEST_SIGNING_KEY=
+
+# Mercado Pago (opcional, default OFF)
+MERCADO_PAGO_HABILITADO=false
+MERCADO_PAGO_ACCESS_TOKEN=
+MERCADO_PAGO_WEBHOOK_SECRET=
+
+# Seed inicial admin
+ADMIN_SEED_EMAIL=
+ADMIN_SEED_PASSWORD=
+ADMIN_SEED_NOMBRE="Admin B&B Tech"
+```
+
+## Pasos al reactivar
+
+1. **Mongo Atlas**: crear cluster, network access (whitelist Vercel IPs
+   o `0.0.0.0/0` con auth fuerte), database user con `readWrite`.
+2. **Vercel project**: importar el repo, dejar Next 15 build defaults.
+3. **Vercel Blob**: activar storage en el dashboard del proyecto y
+   pegar `BLOB_READ_WRITE_TOKEN`. En `app/lib/blob.ts` la abstracción
+   `getBlobStorage()` ya soporta swap entre memoria y Vercel Blob — al
+   reactivar, completar la implementación de `VercelBlobStorage` con
+   `@vercel/blob`.
+4. **Inngest**: crear app en inngest.com, configurar el endpoint
+   apuntando a `https://<dominio>/api/inngest`, copiar las dos keys.
+   Ver `docs/INNGEST.md` para detalles.
+5. **OpenAI**: pegar `OPENAI_API_KEY`. Activar rate-limit en el panel
+   de OpenAI según el `LIMITE_TOKENS_MENSUAL` configurado.
+6. **Auth**: generar `AUTH_SECRET` (`openssl rand -base64 32`),
+   `APP_ENCRYPTION_KEY` (`openssl rand -hex 32`), setear `AUTH_URL` al
+   dominio final, `AUTH_TRUST_HOST=true`.
+7. **Seed**: correr `npm run seed:admin` y `npm run seed:perfiles`
+   contra el Atlas desde local (los scripts leen las mismas env vars)
+   o desde una Vercel function one-shot.
+8. **Verificar**: login → upload de un PDF → extracción completa →
+   export Excel. Si pasa, probar conciliación con un CSV simple.
+9. **(Opcional) Mercado Pago**: cuando esté la cuenta de negocio,
+   setear las 3 `MERCADO_PAGO_*`, configurar el webhook en el panel
+   MP apuntando a `https://<dominio>/api/pagos/mercadopago/webhook`.
+   Encender la flag activa el feature sin redeploy.
 
 ## Notas de compatibilidad
 
-- `app/api/extracciones/route.ts` declara `runtime = "nodejs"` porque `pdfjs-dist` legacy requiere `Buffer` y APIs node.
-- El endpoint Excel también usa `nodejs` porque `exceljs` depende de Node.
-- Mongoose maneja la conexión cacheada en `globalThis` para no agotar pools en cold-starts.
+- Todos los endpoints declaran `runtime = "nodejs"`. `pdfjs-dist`
+  legacy + `exceljs` requieren APIs Node (`Buffer`, `fs`, etc); no se
+  pueden mover a Edge.
+- **Cold starts**: Mongoose se cachea en `globalThis` (ver
+  `app/lib/mongo.ts`); las primeras request del día pueden tardar
+  300-800ms más mientras se levanta la conexión.
+- **Inngest** maneja extracciones largas (Provincia 60+ páginas
+  toma varios minutos); la API responde inmediatamente con el
+  `extraccionId` y el job sigue corriendo en Inngest. El front polea
+  `GET /api/extracciones/[id]`.
+- El blob no se persiste localmente (storage en memoria en dev);
+  reiniciar el server pierde los uploads en curso. En prod con Vercel
+  Blob esto no aplica.
+
+## Limitaciones conocidas en deploy
+
+- Sin email de invitación: el endpoint devuelve el link
+  `/registro/<token>` para que el admin lo copie y lo mande
+  manualmente. Si se quiere automatizar, integrar Resend / SES y
+  cablear en `POST /api/admin/usuarios/invitar`.
+- Sin OCR/vision: solo PDFs digitales (texto extraíble). Decisión
+  vigente, no es una limitación a remediar.
+- Mercado Pago no incluye UI de "crear preference" — el scaffolding
+  cubre el webhook (recibir confirmación de pago). Para activar
+  end-to-end falta el botón "Pagar con MP" en `/cuenta` que arme
+  la preference y redirija al checkout.

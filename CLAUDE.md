@@ -107,7 +107,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 2. **Antes de instalar dependencias, justificar** qué problema resuelve y por qué no se puede sin ella.
 3. **Antes de asumir, preguntar.** Si hay ambigüedad funcional o de UX, frenar y consultar.
 4. **Commits atómicos en español.**
-5. **Documentación viva**: mantener al día `docs/ARQUITECTURA.md`, `docs/DEPLOY_VERCEL.md`, `docs/PERFILES_EXTRACCION.md`, `docs/HOME_UX.md`.
+5. **Documentación viva**: mantener al día `docs/ARQUITECTURA.md`, `docs/DEPLOY_VERCEL.md`, `docs/PERFILES_EXTRACCION.md`, `docs/HOME_UX.md`, `docs/WORKSPACE.md`, `docs/APRENDIZAJE.md`, `docs/CONCILIACION.md`, `docs/INNGEST.md`, `docs/MONETIZACION.md`, `docs/PULIDO.md`, `docs/COMANDOS.md`.
 6. **Deploy a Vercel verificado al cierre de cada fase**, no solo `npm run build` local.
 7. **No mezclar las tres capas de tabs** ni renombrarlas — son conceptos distintos.
 
@@ -144,7 +144,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5, 6, 7 y 9 cerradas. Próxima: Fase 8 (pulido, dashboard público, dark mode). OCR/vision queda fuera del scope.**
+**Todas las fases (1, 2, 3, 4, 5, 6, 7, 9, 8) cerradas. Producto completo según la spec. OCR/vision quedó fuera del scope.**
 
 - **Fase 1 — MVP local**: Next.js 16 + Mongo + Auth.js + OpenAI. Upload + extracción async con chunking server-side, persistencia incremental por chunk y reanudación. Endpoints: `POST /api/extracciones`, `GET /api/extracciones/:id`, `POST /api/extracciones/:id/reanudar`, `GET /api/extracciones/:id/excel`.
 - **Fase 2 — Perfiles**: modelo `PerfilExtraccion` con entidad embebida + `tipoDocumento` (`extracto_bancario`/`tarjeta_credito`/`tarjeta_debito`). 17 entidades seed cargadas via `npm run seed:perfiles` (idempotente). CRUD `/api/perfiles/*` con admin gate. Detector con OpenAI en `POST /api/perfiles/detectar`.
@@ -154,6 +154,7 @@ Trabajamos **una fase por vez**, con tests al cierre y verificación de deploy a
 - **Fase 6 — Conciliación**: modelo `Conciliacion` con `segundaFuente` embebida (registros parseados + mapeo + headers crudos), `matches[]` 1:1 con `confirmadoManualmente`, `descartadosExtracto[]`, `gruposManuales[]` (sumatorias 1:N / N:1) y `estadisticas` recalculadas server-side. Parser CSV (sep auto, comillas, BOM) + XLSX con auto-mapeo de columnas por sinónimos; si falta columna requerida devuelve 422 + headers crudos para mini-mapeador del front. Matcheador determinístico (sin OpenAI) score = 0.4·fecha + 0.3·importe + 0.3·descripción (fast-levenshtein), tolerancias `(días, importe, fuzzy)` desde `.env`, comparación por valor absoluto, asignación 1:1 greedy. Endpoints `GET/POST /api/conciliaciones`, `GET/PATCH/DELETE /api/conciliaciones/[id]` y `GET /api/conciliaciones/[id]/excel`. PATCH soporta `forzarMatch`, `quitarMatch`, `descartarExtracto`, `crearGrupoManual`, `eliminarGrupoManual`, `reMatchear` (preserva manuales y grupos). UI `/conciliacion` (listado) y `/conciliacion/[id]` (doble panel + selección múltiple + barra contextual + tolerancias + grupos manuales). Integración en `/extracciones/[id]` y `/workspace` con panel "Conciliaciones" (historial + nuevo + mini-mapeador in-line).
 - **Fase 7 — Robustez**: Inngest dispara `procesarExtraccionFn` para reemplazar el fire-and-forget; `correrExtraccion()` queda idempotente vía `_meta.chunksCompletados[]`. Cifrado AES-256-GCM con `APP_ENCRYPTION_KEY` en `app/lib/cifrado.ts` para campos sensibles del modelo. Cobertura ≥ 70% (75.23%). OCR/vision **fuera del scope**.
 - **Fase 9 — Monetización**: matriz de planes en `app/lib/planes.ts` (Trial / Plus / Pro / Premium) con precios USD y límites; modelos `Pago` + `Invitacion`; `plan-gate` corre antes de creación de extracciones/conciliaciones (bootstrap a trial, rotación, modo lectura, 429); endpoints `/api/admin/*` con role gate; flujo de invitación público `/registro/[token]` + `POST /api/auth/aceptar-invitacion`; UI admin (`/admin`, `/admin/usuarios`, `/admin/pagos`); `/cuenta` self-service; login rediseñado con 3 planes. Mercado Pago detrás de `MERCADO_PAGO_HABILITADO`: webhook con HMAC + idempotencia por `mpPaymentId` + extensión de ciclo. Ver `docs/MONETIZACION.md`.
+- **Fase 8 — Pulido**: modo oscuro funcional con toggle cíclico (system → light → dark) en el header, persistencia localStorage, script anti-flash en `<head>`, sync entre tabs vía `useSyncExternalStore` (ver `app/lib/tema.ts` y `app/components/ui/ToggleTema.tsx`); KPIs personales en `/cuenta` (extracciones/conciliaciones del ciclo + tokens + breakdown por estado) calculados por `app/lib/kpis-usuario.ts`; banner de ciclo en Home (server component, ámbar al pasar 80%, aviso de modo lectura si vence); documentación final reescrita (`ARQUITECTURA.md`, `DEPLOY_VERCEL.md`, `COMANDOS.md`, `PULIDO.md`). 420/420 tests verde.
 
 **Decisión vigente**: deploy a Vercel pausado, todo local. Verificación de cierre de fase = tests + lint + typecheck + build local (sin `git push` ni Vercel).
 

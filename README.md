@@ -172,10 +172,12 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Mercado Pago detrás de `MERCADO_PAGO_HABILITADO`: webhook con validación HMAC + idempotencia + extensión de ciclo. Flag apagada por default; encenderla activa el feature sin redeploy.
 - 78 tests nuevos en la fase, 406/406 verde total.
 
-### Fase 8 — Pulido (pendiente)
-- Dashboard de KPIs públicos (más allá del admin).
-- Modo oscuro.
-- Documentación final + pulido UX.
+### ✅ Fase 8 — Pulido (cerrada)
+- **Modo oscuro funcional**: toggle cíclico (system → light → dark) en el header, persistencia localStorage, anti-flash con `<script>` inline, respeto a `prefers-color-scheme` con sync entre tabs (`useSyncExternalStore`). Sin nuevas deps.
+- **KPIs del usuario en `/cuenta`**: extracciones del ciclo + total histórico, conciliaciones, tokens OpenAI consumidos, breakdown por estado. Sin librerías de gráficos.
+- **Banner de ciclo en Home**: server component arriba de `<Home />` con resumen "Plan Pro · 12 / 75 extracciones este ciclo"; ámbar al pasar 80%; aviso de modo lectura si el plan venció.
+- **Documentación final**: `ARQUITECTURA.md` y `DEPLOY_VERCEL.md` reescritos para reflejar el estado al cierre de Fase 8; `docs/COMANDOS.md` y `docs/PULIDO.md` nuevos.
+- 14 tests nuevos (9 modo oscuro + 5 KPIs). 420/420 verde.
 
 ---
 
@@ -285,12 +287,14 @@ Se irá completando a lo largo de las fases:
 - `docs/CONCILIACION.md` — modelo `Conciliacion`, parser CSV/XLSX, matcheador, grupos manuales y UI doble panel.
 - `docs/INNGEST.md` — jobs durables, idempotencia y backoff.
 - `docs/MONETIZACION.md` — planes, invitaciones, plan-gate, panel admin, pagos manuales y MP detrás de flag.
+- `docs/PULIDO.md` — modo oscuro, KPIs del usuario, banner de ciclo.
+- `docs/COMANDOS.md` — cheatsheet rápido (setup, dev, cierre de fase, troubleshooting).
 
 ---
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5, 6, 7 y 9 cerradas.** Próximo paso: Fase 8 (pulido / dashboard público / dark mode). OCR/vision quedó fuera del scope.
+**Todas las fases (1, 2, 3, 4, 5, 6, 7, 9 y 8) cerradas.** OCR/vision quedó fuera del scope.
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
@@ -302,7 +306,7 @@ Se irá completando a lo largo de las fases:
 | 6 — Conciliación | ✅ Cerrada | Modelo `Conciliacion`, parser CSV/XLSX con auto-mapeo y 422+mini-mapeador, matcheador determinístico 1:1 con tolerancias, grupos manuales 1:N/N:1, UI doble panel + export Excel + integración con vista de extracto. |
 | 7 — Robustez | ✅ Cerrada | Inngest para jobs durables, cifrado AES-256-GCM con `APP_ENCRYPTION_KEY`, cobertura ≥ 70%. |
 | 9 — Monetización | ✅ Cerrada | Matriz de planes, plan-gate, invitaciones, panel admin (usuarios/pagos/métricas), `/cuenta`, login rediseñado con planes, Mercado Pago detrás de flag. |
-| 8 — Pulido | ⏳ Pendiente | Dashboard público, modo oscuro, documentación final. |
+| 8 — Pulido | ✅ Cerrada | Modo oscuro con toggle cíclico + anti-flash; KPIs del usuario en `/cuenta` + banner de ciclo en Home; documentación final (`ARQUITECTURA.md` y `DEPLOY_VERCEL.md` reescritos, `COMANDOS.md` y `PULIDO.md` nuevos). |
 
 Decisiones operativas vigentes:
 
