@@ -26,6 +26,10 @@ const FRASES_FINAL = [
 ];
 
 const INTERVALO_MS = 3000;
+const TICK_ANIMACION_MS = 250;
+const SEGUNDOS_POR_CHUNK_DEFAULT = 20;
+const TOPE_PSEUDO_DENTRO_DE_CHUNK = 0.92;
+const TOPE_GLOBAL_VISIBLE = 95;
 
 export function BarraProgresoLudica({
   chunksOk,
@@ -36,13 +40,55 @@ export function BarraProgresoLudica({
   chunksTotal: number;
   paginasTotal: number;
 }) {
-  const porcentaje =
+  const porcentajeReal =
     chunksTotal > 0 ? Math.min(100, Math.round((chunksOk / chunksTotal) * 100)) : 0;
+
+  // Pseudo-progreso animado: el bar nunca se "queda en 0". Mientras el chunk
+  // en curso se procesa, interpolamos suavemente hacia el próximo milestone
+  // real usando el tiempo promedio observado por chunk. Cuando el backend
+  // reporta un chunk nuevo, el bar encaja en el valor real y vuelve a animar.
+  const [porcentajeAnimado, setPorcentajeAnimado] = useState(porcentajeReal);
+
+  useEffect(() => {
+    const tMontaje = Date.now();
+    let tInicioChunk = Date.now();
+    let ultimoChunksOk = chunksOk;
+
+    const id = setInterval(() => {
+      if (chunksTotal <= 0) {
+        setPorcentajeAnimado(porcentajeReal);
+        return;
+      }
+      if (chunksOk !== ultimoChunksOk) {
+        ultimoChunksOk = chunksOk;
+        tInicioChunk = Date.now();
+      }
+      const segPromedio =
+        chunksOk > 0
+          ? Math.max(5, (Date.now() - tMontaje) / 1000 / chunksOk)
+          : SEGUNDOS_POR_CHUNK_DEFAULT;
+      const elapsedChunkSeg = (Date.now() - tInicioChunk) / 1000;
+      const pseudoDentroDeChunk = Math.min(
+        TOPE_PSEUDO_DENTRO_DE_CHUNK,
+        elapsedChunkSeg / segPromedio,
+      );
+      const fraccion = (chunksOk + pseudoDentroDeChunk) / chunksTotal;
+      const calc = Math.round(fraccion * 100);
+      const next = Math.min(
+        TOPE_GLOBAL_VISIBLE,
+        Math.max(porcentajeReal, calc),
+      );
+      setPorcentajeAnimado((prev) => (prev === next ? prev : next));
+    }, TICK_ANIMACION_MS);
+    return () => clearInterval(id);
+  }, [chunksOk, chunksTotal, porcentajeReal]);
+
+  const porcentaje = Math.max(porcentajeAnimado, porcentajeReal);
 
   // Fase de frases según avance. Indeterminado al principio (sin chunks
   // hechos), proceso intermedio, cierre cuando estamos cerca del fin.
   const fase = useMemo<string[]>(() => {
-    if (chunksOk === 0) return FRASES_INICIO;
+    if (chunksOk === 0 && porcentaje < 10) return FRASES_INICIO;
     if (porcentaje >= 80) return FRASES_FINAL;
     return FRASES_PROCESO;
   }, [chunksOk, porcentaje]);
