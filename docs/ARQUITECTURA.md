@@ -381,11 +381,28 @@ antes de correrlo en producción.
 
 ---
 
+## Testing
+
+- `npm run test` corre la suite con vitest (33 archivos, 324 tests).
+- `npm run test:coverage` genera reporte con `@vitest/coverage-v8` y
+  enforce thresholds: lines 70%, statements 70%, functions 65%,
+  branches 60%. Si baja de eso, falla en CI.
+- Cobertura actual: **72.9% lines / 82.25% branches / 86.2% functions**.
+- Scope medido: `app/lib/**`, `app/api/**/route.ts`, `app/models/**`.
+  Excluidos del scope los adaptadores delgados a libs externas
+  (`logger`, `mongo`, `blob`, `pdf`, `excel`, `auth`, `openai`,
+  `utils`, `inngest-funciones`) — testearlos sería testear pino /
+  mongoose / openai-sdk / pdfjs / exceljs / vercel-blob, no nuestra
+  lógica.
+- Patrón de tests de handlers: mockeo de Mongoose models + `auth`
+  con `vi.hoisted` + `vi.mock`, sin DB real. Para los modelos con
+  exports auxiliares (constants tipo `TIPOS_VALIDACION`) se reusan
+  via `importOriginal` para no romper los schemas que dependen.
+
 ## Pendientes para fases siguientes
 
-- **Fase 7 (en curso)**: ✅ encriptación AES-GCM en reposo, ✅ Inngest
-  para jobs durables (ver `docs/INNGEST.md`). Pendiente: cobertura
-  de tests ≥ 70%.
+- **Fase 7 ✅ cerrada**: encriptación AES-GCM en reposo, Inngest para
+  jobs durables, cobertura ≥ 70%.
 - **Fase 8**: dashboard de KPIs, modo oscuro, documentación final.
 - **Fase 9 (nueva)**: monetización, planes Plus/Pro/Premium, panel
   admin, login con planes, integración Mercado Pago.

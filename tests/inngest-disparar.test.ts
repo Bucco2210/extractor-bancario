@@ -34,7 +34,8 @@ describe("dispararExtraccion", () => {
     });
 
     expect(mockSend).toHaveBeenCalledOnce();
-    const arg = mockSend.mock.calls[0]![0] as {
+    const calls = mockSend.mock.calls as unknown as Array<[unknown]>;
+    const arg = calls[0]![0] as {
       name: string;
       data: { extraccionId: string; motivo: string };
     };
@@ -55,7 +56,8 @@ describe("dispararExtraccion", () => {
     });
 
     expect(mockSend).toHaveBeenCalledOnce();
-    const arg = mockSend.mock.calls[0]![0] as {
+    const calls = mockSend.mock.calls as unknown as Array<[unknown]>;
+    const arg = calls[0]![0] as {
       data: { motivo: string; perfilId: string | null };
     };
     expect(arg.data.motivo).toBe("reanudar");

@@ -272,7 +272,7 @@ Se irá completando a lo largo de las fases:
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5 y 6 cerradas.** Próximo paso: Fase 7 (Inngest, encriptación, cobertura ≥ 70%). OCR/vision queda fuera del scope.
+**Fases 1, 2, 3, 4, 5, 6 y 7 cerradas.** Próximo paso: Fase 9 (monetización + admin + login con planes — ver `prompt-claude-code-extractos-bancarios-v4.md`). Fase 8 (pulido / KPIs) queda en cola. OCR/vision quedó fuera del scope.
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|

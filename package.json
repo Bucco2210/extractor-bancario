@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:perfiles": "tsx scripts/seed-perfiles.ts",
     "migrar:encriptacion": "tsx scripts/migrar-encriptacion.ts"
@@ -53,6 +54,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "dotenv": "^16.4.7",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
