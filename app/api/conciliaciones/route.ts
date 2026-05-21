@@ -21,6 +21,7 @@ import {
   descifrarConciliacionLean,
   descifrarMovimientos,
 } from "@/lib/cifrado";
+import { verificarLimitePlan } from "@/lib/plan-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -134,6 +135,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
 
     await conectarMongoose();
+
+    // Plan-gate: verificar antes de levantar archivo y matchear.
+    await verificarLimitePlan({
+      usuarioId: session.user.id,
+      rol: session.user.rol ?? "operador",
+      accion: "crear_conciliacion",
+    });
+
     const extraccion = await Extraccion.findOne({
       _id: new Types.ObjectId(extraccionIdRaw),
       usuarioId: session.user.id,

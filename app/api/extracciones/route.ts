@@ -25,6 +25,7 @@ import {
   registrarFalloRegla,
 } from "@/lib/aprendizaje";
 import { cifrarMovimientos } from "@/lib/cifrado";
+import { verificarLimitePlan } from "@/lib/plan-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,15 @@ export async function POST(req: Request): Promise<NextResponse> {
         "Por ahora solo se procesan PDFs digitales en Fase 1.",
       );
     }
+
+    // Plan-gate ANTES de gastar tokens de OpenAI o tocar el blob.
+    // Si pasa, queda incrementado el contador del ciclo.
+    await conectarMongoose();
+    await verificarLimitePlan({
+      usuarioId: session.user.id,
+      rol: session.user.rol ?? "operador",
+      accion: "crear_extraccion",
+    });
 
     const t0 = Date.now();
     const buffer = Buffer.from(await archivo.arrayBuffer());

@@ -32,6 +32,9 @@ vi.mock("../app/lib/mongo", () => ({ conectarMongoose: vi.fn() }));
 vi.mock("../app/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock("../app/lib/plan-gate", () => ({
+  verificarLimitePlan: vi.fn(async () => undefined),
+}));
 
 vi.mock("../app/models/Conciliacion", async (importOriginal) => {
   const actual = await importOriginal<
