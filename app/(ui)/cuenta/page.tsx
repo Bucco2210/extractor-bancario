@@ -1,11 +1,20 @@
 import { redirect } from "next/navigation";
 import { Types } from "mongoose";
-import { AlertTriangle, CheckCircle2, CreditCard } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CreditCard,
+  FileSpreadsheet,
+  Layers,
+  Activity,
+  Sparkles,
+} from "lucide-react";
 import { auth } from "@/lib/auth";
 import { conectarMongoose } from "@/lib/mongo";
 import { env } from "@/lib/env";
 import { Usuario } from "@/models/Usuario";
 import { PLANES } from "@/lib/planes";
+import { calcularKpisUsuario, type KpisUsuario } from "@/lib/kpis-usuario";
 import {
   Card,
   CardContent,
@@ -28,6 +37,12 @@ export default async function CuentaPage() {
   }
 
   const pi = u.planInfo;
+
+  const kpis = await calcularKpisUsuario({
+    usuarioId: session.user.id,
+    cicloInicio: pi?.cicloInicio ?? null,
+    cicloFin: pi?.cicloFin ?? null,
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,7 +79,83 @@ export default async function CuentaPage() {
           }}
         />
       )}
+
+      <KpisPersonales kpis={kpis} />
     </div>
+  );
+}
+
+function KpisPersonales({ kpis }: { kpis: KpisUsuario }) {
+  const exitosas =
+    (kpis.porEstado.extraido ?? 0) + (kpis.porEstado.parcial ?? 0);
+  const conError = kpis.porEstado.error ?? 0;
+  const enProceso =
+    (kpis.porEstado.pendiente ?? 0) + (kpis.porEstado.procesando ?? 0);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <header className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+        <h2 className="text-base font-semibold tracking-tight">Tu actividad</h2>
+        <span className="text-xs text-muted-foreground">
+          (datos del ciclo actual)
+        </span>
+      </header>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          icon={<FileSpreadsheet className="h-4 w-4" />}
+          label="Extracciones del ciclo"
+          value={kpis.extraccionesEnCiclo}
+          sub={`${kpis.extraccionesTotales} en total histórico`}
+        />
+        <KpiCard
+          icon={<Layers className="h-4 w-4" />}
+          label="Conciliaciones del ciclo"
+          value={kpis.conciliacionesEnCiclo}
+          sub={`${kpis.conciliacionesTotales} en total histórico`}
+        />
+        <KpiCard
+          icon={<Activity className="h-4 w-4" />}
+          label="Tokens OpenAI consumidos"
+          value={kpis.tokensEnCiclo.toLocaleString("es-AR")}
+          sub="input + output del ciclo"
+        />
+        <KpiCard
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          label="Estado de extracciones"
+          value={`${exitosas} ok`}
+          sub={`${enProceso} en proceso · ${conError} con error`}
+        />
+      </div>
+    </section>
+  );
+}
+
+function KpiCard({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-1 p-4">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+          {icon}
+          {label}
+        </div>
+        <div className="text-2xl font-bold tabular-nums">{value}</div>
+        {sub ? (
+          <div className="text-xs text-muted-foreground">{sub}</div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
