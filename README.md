@@ -155,16 +155,27 @@ Trabajamos **una fase por vez**, con tests al cierre, commit atómico, y verific
 - Integración en `/extracciones/[id]` y `/workspace`: panel "Conciliaciones" con historial + botón **Conciliar / Nueva conciliación** + mini-mapeador in-line para el caso 422.
 - 28 tests nuevos (parser + matcheador + cálculo de estadísticas con grupos).
 
-### Fase 7 — Robustez
-- Inngest para jobs largos.
-- Encriptación de campos sensibles con `APP_ENCRYPTION_KEY`.
-- Tests con cobertura ≥ 70%.
+### ✅ Fase 7 — Robustez (cerrada)
+- Inngest para jobs largos (`procesarExtraccionFn` dispara `correrExtraccion()` idempotente).
+- Encriptación de campos sensibles con `APP_ENCRYPTION_KEY` (AES-256-GCM).
+- Tests con cobertura ≥ 70% (75.23% al cierre).
 - **OCR/vision para PDFs escaneados queda explícitamente fuera del scope** — solo soportamos PDFs digitales (texto extraíble).
 
-### Fase 8 — Pulido
-- Dashboard con KPIs (cantidad de extracciones, tokens consumidos, errores).
+### ✅ Fase 9 — Monetización y administración (cerrada)
+- Matriz de planes en `app/lib/planes.ts` (Trial / Plus / Pro / Premium) con precios en USD, ciclos mensual/anual y límites de extracciones/conciliaciones.
+- Modelos `Pago` (manual + mercadopago, idempotencia por `mpPaymentId`) e `Invitacion` (token 64 chars hex + expiración).
+- `plan-gate` aplicado a `POST /api/extracciones` y `POST /api/conciliaciones`: bootstrap a trial, rotación de ciclo, modo lectura cuando vence, `429 LIMITE_EXCEDIDO`.
+- Panel admin: `/admin` (dashboard KPIs), `/admin/usuarios` (listado + invitar), `/admin/pagos` (historial + alta manual). Endpoints `/api/admin/*` con role gate.
+- Flujo de acceso solo por invitación: `POST /api/admin/usuarios/invitar` genera `/registro/<token>` que el invitado abre para setear contraseña vía `POST /api/auth/aceptar-invitacion`.
+- `/cuenta`: self-service del usuario con barras de uso y aviso de modo lectura.
+- `/login` rediseñado: 3 planes a la izquierda + form a la derecha (sirve también como landing).
+- Mercado Pago detrás de `MERCADO_PAGO_HABILITADO`: webhook con validación HMAC + idempotencia + extensión de ciclo. Flag apagada por default; encenderla activa el feature sin redeploy.
+- 78 tests nuevos en la fase, 406/406 verde total.
+
+### Fase 8 — Pulido (pendiente)
+- Dashboard de KPIs públicos (más allá del admin).
 - Modo oscuro.
-- Documentación final.
+- Documentación final + pulido UX.
 
 ---
 
@@ -217,6 +228,11 @@ CONCILIACION_FUZZY_UMBRAL=0.85
 INNGEST_EVENT_KEY=
 INNGEST_SIGNING_KEY=
 
+# === Mercado Pago (Fase 9, feature flag) ===
+MERCADO_PAGO_HABILITADO=false
+MERCADO_PAGO_ACCESS_TOKEN=
+MERCADO_PAGO_WEBHOOK_SECRET=
+
 # === Costos y límites ===
 LIMITE_TOKENS_MENSUAL=5000000
 ALERTA_TOKENS_PORCENTAJE=80
@@ -267,12 +283,14 @@ Se irá completando a lo largo de las fases:
 - `docs/WORKSPACE.md` — pestañas, store Zustand y sync a Mongo.
 - `docs/APRENDIZAJE.md` — huella, reglas regex y pipeline regla-primero.
 - `docs/CONCILIACION.md` — modelo `Conciliacion`, parser CSV/XLSX, matcheador, grupos manuales y UI doble panel.
+- `docs/INNGEST.md` — jobs durables, idempotencia y backoff.
+- `docs/MONETIZACION.md` — planes, invitaciones, plan-gate, panel admin, pagos manuales y MP detrás de flag.
 
 ---
 
 ## Estado actual
 
-**Fases 1, 2, 3, 4, 5, 6 y 7 cerradas.** Próximo paso: Fase 9 (monetización + admin + login con planes — ver `prompt-claude-code-extractos-bancarios-v4.md`). Fase 8 (pulido / KPIs) queda en cola. OCR/vision quedó fuera del scope.
+**Fases 1, 2, 3, 4, 5, 6, 7 y 9 cerradas.** Próximo paso: Fase 8 (pulido / dashboard público / dark mode). OCR/vision quedó fuera del scope.
 
 | Fase | Estado | Resultado entregado |
 |---|---|---|
@@ -282,7 +300,9 @@ Se irá completando a lo largo de las fases:
 | 4 — Workspace con pestañas | ✅ Cerrada | `/workspace` con pestañas tipo navegador, store Zustand + persist + sync a Mongo, atajos, integración con Home. |
 | 5 — Aprendizaje | ✅ Cerrada | Huella + `FormatoAprendido` + regla regex, pipeline regla-primero con fallback IA, UI `/formatos` con editor y área de prueba. |
 | 6 — Conciliación | ✅ Cerrada | Modelo `Conciliacion`, parser CSV/XLSX con auto-mapeo y 422+mini-mapeador, matcheador determinístico 1:1 con tolerancias, grupos manuales 1:N/N:1, UI doble panel + export Excel + integración con vista de extracto. |
-| 7–8 | ⏳ Pendientes | Ver "Plan de implementación por fases" más arriba. |
+| 7 — Robustez | ✅ Cerrada | Inngest para jobs durables, cifrado AES-256-GCM con `APP_ENCRYPTION_KEY`, cobertura ≥ 70%. |
+| 9 — Monetización | ✅ Cerrada | Matriz de planes, plan-gate, invitaciones, panel admin (usuarios/pagos/métricas), `/cuenta`, login rediseñado con planes, Mercado Pago detrás de flag. |
+| 8 — Pulido | ⏳ Pendiente | Dashboard público, modo oscuro, documentación final. |
 
 Decisiones operativas vigentes:
 

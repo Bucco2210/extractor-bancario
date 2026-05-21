@@ -2,8 +2,16 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 const RUTAS_PUBLICAS = new Set<string>(["/login"]);
-/** Prefijos públicos: /registro/<token> (aceptar invitación). */
-const PREFIJOS_PUBLICOS = ["/registro/"];
+/**
+ * Prefijos públicos:
+ * - /registro/<token>: aceptar invitación.
+ * - /api/pagos/mercadopago/webhook: Mercado Pago hace POST sin sesión.
+ *   El handler valida HMAC contra MERCADO_PAGO_WEBHOOK_SECRET.
+ */
+const PREFIJOS_PUBLICOS = [
+  "/registro/",
+  "/api/pagos/mercadopago/webhook",
+];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

@@ -80,6 +80,16 @@ const envSchema = z.object({
   INNGEST_EVENT_KEY: optionalString,
   INNGEST_SIGNING_KEY: optionalString,
 
+  // Mercado Pago (fase 9) — todo el camino vive detrás de la flag.
+  // Cuando la flag está apagada, el webhook devuelve 503 y la UI no
+  // muestra el botón. Las credenciales pueden quedar vacías en dev.
+  MERCADO_PAGO_HABILITADO: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true" || v === "1")
+    .default(false),
+  MERCADO_PAGO_ACCESS_TOKEN: optionalString,
+  MERCADO_PAGO_WEBHOOK_SECRET: optionalString,
+
   // Costos
   LIMITE_TOKENS_MENSUAL: z.coerce.number().int().positive().default(5_000_000),
   ALERTA_TOKENS_PORCENTAJE: z.coerce.number().int().min(1).max(100).default(80),

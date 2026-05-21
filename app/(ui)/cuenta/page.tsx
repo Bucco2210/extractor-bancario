@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { Types } from "mongoose";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { conectarMongoose } from "@/lib/mongo";
+import { env } from "@/lib/env";
 import { Usuario } from "@/models/Usuario";
 import { PLANES } from "@/lib/planes";
 import {
@@ -134,9 +135,35 @@ function CuentaConPlan({
             <CardDescription>
               Podés ver y exportar a Excel todo lo que ya extrajiste, pero
               no crear nuevas extracciones ni conciliaciones hasta que
-              renueves el plan. Hablá con el admin para reactivar.
+              renueves el plan.{" "}
+              {env.MERCADO_PAGO_HABILITADO ? (
+                <>Renová tu plan con Mercado Pago abajo.</>
+              ) : (
+                <>Hablá con el admin para reactivar.</>
+              )}
             </CardDescription>
           </CardHeader>
+        </Card>
+      ) : null}
+
+      {env.MERCADO_PAGO_HABILITADO && planInfo.plan !== "trial" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CreditCard className="h-4 w-4" />
+              Pagar con Mercado Pago
+            </CardTitle>
+            <CardDescription>
+              Renová o cambiá tu plan vía Mercado Pago. El pago se acredita
+              automáticamente y extiende tu ciclo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              Integración disponible — pedile al admin el link de pago si
+              todavía no lo ves acá.
+            </p>
+          </CardContent>
         </Card>
       ) : null}
     </>
